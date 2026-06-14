@@ -45,19 +45,28 @@ Every billable operation must provide an idempotency key using:
 ```
 
 `usage.usage_events` must have a unique index on
-`(organization_id, product_code, metric_code, idempotency_key)` where
+`(organization_id, user_id, product_code, metric_code, idempotency_key)` where
 `idempotency_key is not null`.
 
-`consume_usage` and `reserve_usage` must check for an existing event with the
-same key before changing counters. A duplicate key returns the previous result
-without incrementing usage or reserved values again.
+`consume_usage` and `reserve_usage` must claim the idempotency key atomically
+before changing counters, using `insert ... on conflict do nothing` against the
+unique idempotency index. A duplicate key returns the previous result without
+incrementing usage or reserved values again. Never implement this as
+`select-then-insert`, because concurrent retries can both pass the select.
 
 ## ADR-004: Usage counters avoid partial-index conflict ambiguity
 
-`usage.usage_counters` must use a conflict target that PostgreSQL can address
-reliably from `ON CONFLICT`. The MVP implementation will use a named unique
-constraint that includes `counter_scope` instead of relying on partial unique
-indexes as the conflict target.
+`usage.usage_counters` must use conflict targets that PostgreSQL can address
+reliably from `ON CONFLICT`, without collapsing different user counters into one
+row. The MVP implementation will use named unique constraints:
+
+```sql
+unique (organization_id, product_code, metric_code, period_start, period_end, counter_scope)
+unique (organization_id, user_id, product_code, metric_code, period_start, period_end, counter_scope)
+```
+
+The organization-scoped function path must target the first constraint. The
+user-scoped and organization-and-user paths must target the second constraint.
 
 The table still keeps a check constraint that enforces:
 
@@ -110,5 +119,32 @@ Testcontainers uses plain PostgreSQL, not a full Supabase stack. Integration
 tests that need foreign keys to Supabase Auth must create a minimal test-only
 `auth.users` table before platform migrations run.
 
-This test schema is not a production migration and must not replace Supabase
-Auth in deployed environments.
+The mechanism is `PostgreSQLContainer.withInitScript("test-auth-stub.sql")`.
+Place `test-auth-stub.sql` under `src/test/resources` and create the `auth`
+schema plus the minimal `auth.users` columns referenced by production
+migrations. This test schema is not a production migration and must not replace
+Supabase Auth in deployed environments.
+
+## ADR-009: Modulith JPA event publication store is durable by default
+
+Keep `spring-modulith-starter-jpa` enabled so future
+`@ApplicationModuleListener` handlers use a JPA-backed publication registry and
+can be retried after crashes.
+
+Because `ddl-auto=validate` is enabled, migrations must create the Modulith
+tables expected by the dependency:
+
+- `EVENT_PUBLICATION`
+- `EVENT_PUBLICATION_ARCHIVE`
+
+## ADR-010: Modulith observability dependency is deferred until a runtime JAR exists
+
+`spring-modulith-observability:2.1.0-RC1` is published as a POM-packaged
+artifact in Maven Central and has no runtime JAR. Adding it as a normal runtime
+dependency breaks Maven resolution.
+
+Module-boundary observability must be revisited when upgrading Spring Modulith
+to a version that publishes a runtime observability artifact or documents a
+different setup path. Until then, rely on Actuator/Micrometer defaults and
+explicit spans around high-risk service/database calls when those modules are
+implemented.

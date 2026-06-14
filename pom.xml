@@ -68,6 +68,10 @@
             <artifactId>spring-modulith-starter-core</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.springframework.modulith</groupId>
+            <artifactId>spring-modulith-starter-jpa</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
@@ -77,6 +81,7 @@
             <artifactId>spring-modulith-actuator</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- spring-modulith-observability 2.1.0-RC1 is a POM-packaged artifact in Maven Central, not a runtime JAR. -->
         <dependency>
             <groupId>org.springframework.modulith</groupId>
             <artifactId>spring-modulith-runtime</artifactId>

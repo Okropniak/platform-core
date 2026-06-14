@@ -4,11 +4,10 @@ target/
 
 ### Local secrets ###
 .agents/
-.claude/skills/
-.claude/settings.local.json
+.claude/
 .env
 *.env
-skills-lock.json
+/skills-lock.json
 
 !**/src/main/**/target/
 !**/src/test/**/target/
