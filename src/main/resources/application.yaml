@@ -10,6 +10,8 @@ spring:
       ddl-auto: validate
     properties:
       hibernate.default_schema: platform
+      # Platform SQL functions called from JDBC must receive the authenticated
+      # Supabase user id explicitly. Do not rely on auth.uid() in JDBC sessions.
   flyway:
     schemas: platform,billing,entitlement,usage,audit
     locations: classpath:db/migration

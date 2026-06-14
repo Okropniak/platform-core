@@ -3,9 +3,12 @@ target/
 .mvn/wrapper/maven-wrapper.jar
 
 ### Local secrets ###
+.agents/
+.claude/skills/
 .claude/settings.local.json
 .env
 *.env
+skills-lock.json
 
 !**/src/main/**/target/
 !**/src/test/**/target/
