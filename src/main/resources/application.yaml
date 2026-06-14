@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: platform-core
+  datasource:
+    url: ${SUPABASE_JDBC_URL}
+    username: ${SUPABASE_DB_USER}
+    password: ${SUPABASE_DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.default_schema: platform
+  flyway:
+    schemas: platform,billing,entitlement,usage,audit
+    locations: classpath:db/migration
+    default-schema: platform
