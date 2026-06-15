@@ -36,3 +36,15 @@ create table platform.organization_members (
 
 create index organization_members_user_status_idx
 on platform.organization_members (user_id, status);
+
+grant select, insert, update, delete on
+    platform.profiles,
+    platform.organizations,
+    platform.organization_members
+to platform_backend_role;
+
+grant select on
+    platform.profiles,
+    platform.organizations,
+    platform.organization_members
+to authenticated;

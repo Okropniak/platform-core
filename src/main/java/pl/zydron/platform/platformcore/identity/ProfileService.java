@@ -1,6 +1,7 @@
 package pl.zydron.platform.platformcore.identity;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,11 +29,20 @@ public class ProfileService {
                     profile.setUpdatedAt(now);
                     return profile;
                 })
-                .orElseGet(() -> profileRepository.save(ProfileEntity.builder()
-                        .userId(userId)
-                        .displayName(displayName)
-                        .createdAt(now)
-                        .updatedAt(now)
-                        .build()));
+                .orElseGet(() -> createProfile(userId, displayName, now));
+    }
+
+    private ProfileEntity createProfile(UUID userId, String displayName, OffsetDateTime now) {
+        try {
+            return profileRepository.save(ProfileEntity.builder()
+                    .userId(userId)
+                    .displayName(displayName)
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build());
+        } catch (DataIntegrityViolationException exception) {
+            return profileRepository.findByUserId(userId)
+                    .orElseThrow(() -> exception);
+        }
     }
 }

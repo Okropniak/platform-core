@@ -9,8 +9,18 @@ create table if not exists auth.users (
 
 create or replace function auth.uid()
 returns uuid
-language sql
+language plpgsql
 stable
 as $$
-    select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
+declare
+    v_subject text;
+begin
+    v_subject := current_setting('request.jwt.claim.sub', true);
+
+    if v_subject is null or v_subject = '' then
+        raise exception 'test auth.uid() called without request.jwt.claim.sub';
+    end if;
+
+    return v_subject::uuid;
+end;
 $$;

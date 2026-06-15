@@ -15,9 +15,3 @@ $$;
 
 revoke all on function platform.handle_new_user() from public;
 grant execute on function platform.handle_new_user() to platform_backend_role;
-
-drop trigger if exists on_auth_user_created on auth.users;
-
-create trigger on_auth_user_created
-    after insert on auth.users
-    for each row execute function platform.handle_new_user();

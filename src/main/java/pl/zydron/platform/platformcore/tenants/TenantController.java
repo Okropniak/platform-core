@@ -9,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import pl.zydron.platform.platformcore.common.JwtUser;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -35,12 +35,12 @@ public class TenantController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateOrganizationRequest request
     ) {
-        return OrganizationResponse.from(tenantService.createOrganization(userId(jwt), request.name(), request.type()));
+        return OrganizationResponse.from(tenantService.createOrganization(JwtUser.userId(jwt), request.name(), request.type()));
     }
 
     @GetMapping
     List<OrganizationResponse> getOrganizations(@AuthenticationPrincipal Jwt jwt) {
-        return tenantService.getOrganizationsForUser(userId(jwt)).stream()
+        return tenantService.getOrganizationsForUser(JwtUser.userId(jwt)).stream()
                 .map(OrganizationResponse::from)
                 .toList();
     }
@@ -52,17 +52,7 @@ public class TenantController {
             @PathVariable UUID id,
             @Valid @RequestBody AddMemberRequest request
     ) {
-        return MemberResponse.from(tenantService.addMember(id, userId(jwt), request.userId(), request.role()));
-    }
-
-    @ExceptionHandler(TenantAccessDeniedException.class)
-    @ResponseStatus(HttpStatus.FORBIDDEN)
-    ErrorResponse handleAccessDenied(TenantAccessDeniedException exception) {
-        return new ErrorResponse(exception.getMessage());
-    }
-
-    private UUID userId(Jwt jwt) {
-        return UUID.fromString(jwt.getSubject());
+        return MemberResponse.from(tenantService.addMember(id, JwtUser.userId(jwt), request.userId(), request.role()));
     }
 
     public record CreateOrganizationRequest(
@@ -106,8 +96,5 @@ public class TenantController {
                     member.getStatus()
             );
         }
-    }
-
-    public record ErrorResponse(String message) {
     }
 }

@@ -1,8 +1,11 @@
 package pl.zydron.platform.platformcore.tenants;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pl.zydron.platform.platformcore.common.BadRequestException;
+import pl.zydron.platform.platformcore.common.ConflictException;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -17,6 +20,7 @@ public class TenantService {
 
     private final OrganizationRepository organizationRepository;
     private final OrganizationMemberRepository organizationMemberRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     @Transactional
     public OrganizationEntity createOrganization(UUID userId, String name, String type) {
@@ -42,6 +46,11 @@ public class TenantService {
     @Transactional
     public OrganizationMemberEntity addMember(UUID organizationId, UUID requestingUserId, UUID targetUserId, String role) {
         requireManager(organizationId, requestingUserId);
+        requireExistingUser(targetUserId);
+
+        if (organizationMemberRepository.findByIdOrganizationIdAndIdUserId(organizationId, targetUserId).isPresent()) {
+            throw new ConflictException("User is already an organization member.");
+        }
 
         return organizationMemberRepository.save(OrganizationMemberEntity.builder()
                 .id(new OrganizationMemberId(organizationId, targetUserId))
@@ -64,6 +73,18 @@ public class TenantService {
 
         if (!MANAGER_ROLES.contains(member.getRole())) {
             throw new TenantAccessDeniedException("User is not allowed to manage this organization.");
+        }
+    }
+
+    private void requireExistingUser(UUID userId) {
+        Boolean exists = jdbcTemplate.queryForObject(
+                "select exists (select 1 from auth.users where id = ?)",
+                Boolean.class,
+                userId
+        );
+
+        if (!Boolean.TRUE.equals(exists)) {
+            throw new BadRequestException("Target user does not exist.");
         }
     }
 }

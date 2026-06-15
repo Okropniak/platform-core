@@ -19,6 +19,7 @@ $$;
 
 revoke all on function platform.is_org_member(uuid, uuid) from public;
 grant execute on function platform.is_org_member(uuid, uuid) to platform_backend_role;
+grant execute on function platform.is_org_member(uuid, uuid) to authenticated;
 
 alter table platform.profiles enable row level security;
 alter table platform.organizations enable row level security;

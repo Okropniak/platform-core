@@ -16,3 +16,8 @@ spring:
     schemas: platform,billing,entitlement,usage,audit
     locations: classpath:db/migration
     default-schema: platform
+  modulith:
+    events:
+      jdbc:
+        schema-initialization:
+          enabled: false
