@@ -37,6 +37,36 @@ class PlatformDatabaseMigrationTests {
     }
 
     @Test
+    void seedsInitialProducts() {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from platform.products
+                where code in ('search_saas', 'grant_saas', 'architecture_saas')
+                  and status = 'active'
+                """,
+                Integer.class
+        );
+
+        assertThat(count).isEqualTo(3);
+    }
+
+    @Test
+    void grantsProductFunctionPrivileges() {
+        Boolean backendAllowed = jdbcTemplate.queryForObject(
+                "select has_function_privilege('platform_backend_role', 'platform.check_product_access(uuid, uuid, text)', 'execute')",
+                Boolean.class
+        );
+        Boolean authenticatedAllowed = jdbcTemplate.queryForObject(
+                "select has_function_privilege('authenticated', 'platform.has_product_access(uuid, uuid, text)', 'execute')",
+                Boolean.class
+        );
+
+        assertThat(backendAllowed).isTrue();
+        assertThat(authenticatedAllowed).isTrue();
+    }
+
+    @Test
     void testAuthUidFailsWhenSubjectIsNotConfigured() {
         assertThatThrownBy(() -> jdbcTemplate.queryForObject("select auth.uid()", String.class))
                 .hasMessageContaining("test auth.uid() called without request.jwt.claim.sub");

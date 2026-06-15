@@ -67,13 +67,20 @@ public class TenantService {
 
     @Transactional(readOnly = true)
     public void requireManager(UUID organizationId, UUID userId) {
-        var member = organizationMemberRepository.findByIdOrganizationIdAndIdUserId(organizationId, userId)
-                .filter(candidate -> "active".equals(candidate.getStatus()))
-                .orElseThrow(() -> new TenantAccessDeniedException("User is not an active organization member."));
+        var member = requireActiveMember(organizationId, userId);
 
         if (!MANAGER_ROLES.contains(member.getRole())) {
             throw new TenantAccessDeniedException("User is not allowed to manage this organization.");
         }
+    }
+
+    @Transactional(readOnly = true)
+    public OrganizationMemberEntity requireActiveMember(UUID organizationId, UUID userId) {
+        var member = organizationMemberRepository.findByIdOrganizationIdAndIdUserId(organizationId, userId)
+                .filter(candidate -> "active".equals(candidate.getStatus()))
+                .orElseThrow(() -> new TenantAccessDeniedException("User is not an active organization member."));
+
+        return member;
     }
 
     private void requireExistingUser(UUID userId) {
