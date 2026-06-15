@@ -172,7 +172,7 @@ class PlatformDatabaseMigrationTests {
         );
 
         String limit = jdbcTemplate.queryForObject(
-                "select entitlement.get_entitlements(?, 'search_saas')->'ai_search_per_use'->>'limit_value'",
+                "select entitlement.get_entitlements(?, 'search_saas')->'ai_search_per_use'->>'limitValue'",
                 String.class,
                 organizationId
         );
@@ -221,6 +221,50 @@ class PlatformDatabaseMigrationTests {
 
         assertThat(count).isEqualTo(3);
         assertThat(tokenLimit).isEqualTo("100000");
+    }
+
+    @Test
+    void syncEntitlementsFromPlanSoftDisablesEntriesRemovedByDowngrade() {
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = UUID.randomUUID();
+
+        jdbcTemplate.update("insert into auth.users (id) values (?)", userId);
+        jdbcTemplate.update(
+                "insert into platform.organizations (id, name, type, created_by) values (?, 'Downgrade Org', 'company', ?)",
+                organizationId,
+                userId
+        );
+
+        entitlementService.syncEntitlementsFromPlan(organizationId, "search_saas", "pro");
+        entitlementService.syncEntitlementsFromPlan(organizationId, "search_saas", "free");
+
+        Integer enabledCount = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from entitlement.organization_entitlements
+                where organization_id = ?
+                  and product_code = 'search_saas'
+                  and source = 'plan'
+                  and enabled
+                """,
+                Integer.class,
+                organizationId
+        );
+        Boolean tokensEnabled = jdbcTemplate.queryForObject(
+                """
+                select enabled
+                from entitlement.organization_entitlements
+                where organization_id = ?
+                  and product_code = 'search_saas'
+                  and feature_code = 'ai_search_tokens'
+                  and metric_code = 'ai_search_tokens'
+                """,
+                Boolean.class,
+                organizationId
+        );
+
+        assertThat(enabledCount).isEqualTo(2);
+        assertThat(tokensEnabled).isFalse();
     }
 
     @Test

@@ -14,3 +14,24 @@ values
 on conflict (product_code, metric_code) do update
 set unit = excluded.unit,
     period = excluded.period;
+
+insert into billing.plan_entitlements (
+    product_code,
+    plan_code,
+    feature_code,
+    metric_code,
+    enabled,
+    limit_value,
+    period
+)
+values
+    ('search_saas', 'free', 'basic_search', null, true, null, 'monthly'),
+    ('search_saas', 'free', 'ai_search_per_use', 'ai_search_usage', true, 100, 'monthly'),
+    ('search_saas', 'pro', 'basic_search', null, true, null, 'monthly'),
+    ('search_saas', 'pro', 'ai_search_per_use', 'ai_search_usage', true, 1000, 'monthly'),
+    ('search_saas', 'pro', 'ai_search_tokens', 'ai_search_tokens', true, 100000, 'monthly')
+on conflict (product_code, plan_code, feature_code, metric_code) do update
+set enabled = excluded.enabled,
+    limit_value = excluded.limit_value,
+    period = excluded.period,
+    active = true;

@@ -13,8 +13,8 @@ as $$
             oe.feature_code,
             jsonb_build_object(
                 'enabled', oe.enabled,
-                'metric_code', oe.metric_code,
-                'limit_value', oe.limit_value,
+                'metricCode', oe.metric_code,
+                'limitValue', oe.limit_value,
                 'period', oe.period,
                 'source', oe.source
             )

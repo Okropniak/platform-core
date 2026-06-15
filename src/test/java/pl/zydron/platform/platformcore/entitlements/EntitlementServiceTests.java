@@ -3,6 +3,7 @@ package pl.zydron.platform.platformcore.entitlements;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import pl.zydron.platform.platformcore.tenants.TenantService;
+import pl.zydron.platform.platformcore.common.BadRequestException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
@@ -11,6 +12,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -111,6 +113,53 @@ class EntitlementServiceTests {
         assertThat(limit.enabled()).isTrue();
         assertThat(limit.limitValue()).isEqualByComparingTo("30000");
         assertThat(limit.source()).isEqualTo("manual");
+    }
+
+    @Test
+    void effectiveLimitRejectsUserOverrideWithDifferentPeriod() {
+        UUID organizationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        when(organizationEntitlementRepository.findCurrent(
+                organizationId,
+                "search_saas",
+                "ai_search_usage",
+                "ai_search_usage"
+        )).thenReturn(Optional.of(organizationEntitlement(
+                organizationId,
+                "ai_search_usage",
+                "ai_search_usage",
+                BigDecimal.valueOf(1000)
+        )));
+        when(userEntitlementRepository.findCurrent(
+                organizationId,
+                userId,
+                "search_saas",
+                "ai_search_usage",
+                "ai_search_usage"
+        )).thenReturn(Optional.of(UserEntitlementEntity.builder()
+                .id(UUID.randomUUID())
+                .organizationId(organizationId)
+                .userId(userId)
+                .productCode("search_saas")
+                .featureCode("ai_search_usage")
+                .metricCode("ai_search_usage")
+                .enabled(true)
+                .limitValue(BigDecimal.valueOf(100))
+                .period("daily")
+                .source("manual")
+                .validFrom(OffsetDateTime.now())
+                .build()));
+
+        assertThatThrownBy(() -> entitlementService.getEffectiveLimit(
+                organizationId,
+                userId,
+                "search_saas",
+                "ai_search_usage",
+                "ai_search_usage"
+        ))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("period must match");
     }
 
     private OrganizationEntitlementEntity organizationEntitlement(

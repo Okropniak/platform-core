@@ -87,18 +87,49 @@ create table entitlement.user_entitlements (
         check (period in ('daily', 'monthly', 'yearly', 'lifetime'))
 );
 
+create table billing.plan_entitlements (
+    id uuid primary key default gen_random_uuid(),
+    product_code text not null references platform.products(code),
+    plan_code text not null,
+    feature_code text not null,
+    metric_code text,
+    enabled boolean not null default true,
+    limit_value numeric,
+    period text default 'monthly',
+    active boolean not null default true,
+    created_at timestamptz not null default now(),
+
+    unique nulls not distinct (product_code, plan_code, feature_code, metric_code),
+
+    constraint plan_entitlements_feature_fk
+        foreign key (product_code, feature_code)
+        references entitlement.features(product_code, feature_code),
+
+    constraint plan_entitlements_metric_fk
+        foreign key (product_code, metric_code)
+        references entitlement.metrics(product_code, metric_code),
+
+    constraint plan_entitlements_period_check
+        check (period in ('daily', 'monthly', 'yearly', 'lifetime'))
+);
+
 create index organization_entitlements_active_idx
     on entitlement.organization_entitlements (organization_id, product_code, feature_code, metric_code)
-    where enabled and valid_until is null;
+    where enabled;
 
 create index user_entitlements_active_idx
     on entitlement.user_entitlements (organization_id, user_id, product_code, feature_code, metric_code)
-    where enabled and valid_until is null;
+    where enabled;
+
+create index plan_entitlements_active_idx
+    on billing.plan_entitlements (product_code, plan_code, feature_code, metric_code)
+    where active;
 
 grant select, insert, update, delete on entitlement.features to platform_backend_role;
 grant select, insert, update, delete on entitlement.metrics to platform_backend_role;
 grant select, insert, update, delete on entitlement.organization_entitlements to platform_backend_role;
 grant select, insert, update, delete on entitlement.user_entitlements to platform_backend_role;
+grant select, insert, update, delete on billing.plan_entitlements to platform_backend_role;
 
 grant select on entitlement.features to authenticated;
 grant select on entitlement.metrics to authenticated;

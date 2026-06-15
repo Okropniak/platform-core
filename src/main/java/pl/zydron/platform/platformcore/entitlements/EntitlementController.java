@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import pl.zydron.platform.platformcore.common.JwtUser;
-import tools.jackson.databind.JsonNode;
 
 import java.util.UUID;
 
@@ -18,7 +17,7 @@ public class EntitlementController {
     private final EntitlementService entitlementService;
 
     @GetMapping("/api/organizations/{id}/entitlements/{productCode}")
-    JsonNode getEntitlements(
+    EntitlementService.EntitlementsResponse getEntitlements(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID id,
             @PathVariable String productCode
