@@ -6,6 +6,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -64,6 +66,48 @@ class PlatformDatabaseMigrationTests {
 
         assertThat(backendAllowed).isTrue();
         assertThat(authenticatedAllowed).isTrue();
+    }
+
+    @Test
+    void productAccessFunctionDoesNotExposeRoleForDisabledAccess() {
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = UUID.randomUUID();
+
+        jdbcTemplate.update("insert into auth.users (id) values (?)", userId);
+        jdbcTemplate.update(
+                "insert into platform.organizations (id, name, type, created_by) values (?, 'Acme', 'company', ?)",
+                organizationId,
+                userId
+        );
+        jdbcTemplate.update(
+                "insert into platform.organization_members (organization_id, user_id, role, status) values (?, ?, 'owner', 'active')",
+                organizationId,
+                userId
+        );
+        jdbcTemplate.update(
+                """
+                insert into platform.product_access (organization_id, user_id, product_code, role, enabled)
+                values (?, ?, 'search_saas', 'user', false)
+                """,
+                organizationId,
+                userId
+        );
+
+        Boolean allowed = jdbcTemplate.queryForObject(
+                "select (platform.check_product_access(?, ?, 'search_saas')->>'allowed')::boolean",
+                Boolean.class,
+                organizationId,
+                userId
+        );
+        String role = jdbcTemplate.queryForObject(
+                "select platform.check_product_access(?, ?, 'search_saas')->>'role'",
+                String.class,
+                organizationId,
+                userId
+        );
+
+        assertThat(allowed).isFalse();
+        assertThat(role).isNull();
     }
 
     @Test

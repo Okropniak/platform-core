@@ -47,6 +47,7 @@ begin
     where pa.organization_id = p_organization_id
       and pa.user_id = p_user_id
       and pa.product_code = p_product_code
+      and pa.enabled
       and p.status = 'active';
 
     return jsonb_build_object(

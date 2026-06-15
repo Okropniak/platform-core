@@ -2,6 +2,7 @@ package pl.zydron.platform.platformcore.products;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import pl.zydron.platform.platformcore.common.BadRequestException;
 import pl.zydron.platform.platformcore.tenants.TenantService;
 import tools.jackson.databind.ObjectMapper;
@@ -39,19 +40,28 @@ class ProductServiceTests {
     void registerUserToProductReactivatesExistingRegistrationInsteadOfCreatingDuplicate() {
         UUID organizationId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        var existing = ProductRegistrationEntity.builder()
+        var upserted = ProductRegistrationEntity.builder()
                 .id(UUID.randomUUID())
                 .organizationId(organizationId)
                 .userId(userId)
                 .productCode("search_saas")
-                .status("revoked")
+                .acceptedTermsVersion("2026-06")
+                .acceptedPrivacyVersion("2026-06")
+                .status("active")
                 .registeredAt(OffsetDateTime.now())
                 .build();
 
         when(productRepository.findByCodeAndStatus("search_saas", "active"))
                 .thenReturn(Optional.of(activeProduct()));
-        when(productRegistrationRepository.findByOrganizationIdAndUserIdAndProductCode(organizationId, userId, "search_saas"))
-                .thenReturn(Optional.of(existing));
+        when(jdbcTemplate.queryForObject(
+                anyString(),
+                org.mockito.ArgumentMatchers.<RowMapper<ProductRegistrationEntity>>any(),
+                eq(organizationId),
+                eq(userId),
+                eq("search_saas"),
+                eq("2026-06"),
+                eq("2026-06")
+        )).thenReturn(upserted);
 
         var registration = productService.registerUserToProduct(
                 organizationId,
@@ -71,17 +81,23 @@ class ProductServiceTests {
         UUID organizationId = UUID.randomUUID();
         UUID adminId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        var id = new ProductAccessId(organizationId, userId, "search_saas");
-        var existing = ProductAccessEntity.builder()
-                .id(id)
-                .role("viewer")
-                .enabled(false)
+        var upserted = ProductAccessEntity.builder()
+                .id(new ProductAccessId(organizationId, userId, "search_saas"))
+                .role("admin")
+                .enabled(true)
                 .createdAt(OffsetDateTime.now())
                 .build();
 
         when(productRepository.findByCodeAndStatus("search_saas", "active"))
                 .thenReturn(Optional.of(activeProduct()));
-        when(productAccessRepository.findById(id)).thenReturn(Optional.of(existing));
+        when(jdbcTemplate.queryForObject(
+                anyString(),
+                org.mockito.ArgumentMatchers.<RowMapper<ProductAccessEntity>>any(),
+                eq(organizationId),
+                eq(userId),
+                eq("search_saas"),
+                eq("admin")
+        )).thenReturn(upserted);
 
         var access = productService.grantAccess(organizationId, adminId, userId, "search_saas", "admin");
 

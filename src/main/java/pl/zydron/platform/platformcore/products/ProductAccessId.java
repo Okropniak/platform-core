@@ -15,6 +15,8 @@ import java.util.UUID;
 @Embeddable
 public class ProductAccessId implements Serializable {
 
+    private static final long serialVersionUID = 1L;
+
     @Column(nullable = false)
     private UUID organizationId;
 

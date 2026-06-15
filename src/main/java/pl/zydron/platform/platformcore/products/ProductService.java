@@ -34,23 +34,46 @@ public class ProductService {
         tenantService.requireActiveMember(organizationId, userId);
         requireActiveProduct(productCode);
 
-        return productRegistrationRepository
-                .findByOrganizationIdAndUserIdAndProductCode(organizationId, userId, productCode)
-                .map(existing -> {
-                    existing.setAcceptedTermsVersion(termsVersion);
-                    existing.setAcceptedPrivacyVersion(privacyVersion);
-                    existing.setStatus("active");
-                    return existing;
-                })
-                .orElseGet(() -> productRegistrationRepository.save(ProductRegistrationEntity.builder()
-                        .organizationId(organizationId)
-                        .userId(userId)
-                        .productCode(productCode)
-                        .acceptedTermsVersion(termsVersion)
-                        .acceptedPrivacyVersion(privacyVersion)
-                        .status("active")
-                        .registeredAt(OffsetDateTime.now())
-                        .build()));
+        return jdbcTemplate.queryForObject(
+                """
+                insert into platform.product_registrations (
+                    organization_id,
+                    user_id,
+                    product_code,
+                    accepted_terms_version,
+                    accepted_privacy_version,
+                    status
+                )
+                values (?, ?, ?, ?, ?, 'active')
+                on conflict (organization_id, user_id, product_code) do update
+                set accepted_terms_version = excluded.accepted_terms_version,
+                    accepted_privacy_version = excluded.accepted_privacy_version,
+                    status = 'active'
+                returning id,
+                          organization_id,
+                          user_id,
+                          product_code,
+                          accepted_terms_version,
+                          accepted_privacy_version,
+                          status,
+                          registered_at
+                """,
+                (rs, rowNum) -> ProductRegistrationEntity.builder()
+                        .id(rs.getObject("id", UUID.class))
+                        .organizationId(rs.getObject("organization_id", UUID.class))
+                        .userId(rs.getObject("user_id", UUID.class))
+                        .productCode(rs.getString("product_code"))
+                        .acceptedTermsVersion(rs.getString("accepted_terms_version"))
+                        .acceptedPrivacyVersion(rs.getString("accepted_privacy_version"))
+                        .status(rs.getString("status"))
+                        .registeredAt(rs.getObject("registered_at", OffsetDateTime.class))
+                        .build(),
+                organizationId,
+                userId,
+                productCode,
+                termsVersion,
+                privacyVersion
+        );
     }
 
     @Transactional
@@ -65,19 +88,41 @@ public class ProductService {
         tenantService.requireActiveMember(organizationId, targetUserId);
         requireActiveProduct(productCode);
 
-        var id = new ProductAccessId(organizationId, targetUserId, productCode);
-        return productAccessRepository.findById(id)
-                .map(existing -> {
-                    existing.setRole(role);
-                    existing.setEnabled(true);
-                    return existing;
-                })
-                .orElseGet(() -> productAccessRepository.save(ProductAccessEntity.builder()
-                        .id(id)
-                        .role(role)
-                        .enabled(true)
-                        .createdAt(OffsetDateTime.now())
-                        .build()));
+        return jdbcTemplate.queryForObject(
+                """
+                insert into platform.product_access (
+                    organization_id,
+                    user_id,
+                    product_code,
+                    role,
+                    enabled
+                )
+                values (?, ?, ?, ?, true)
+                on conflict (organization_id, user_id, product_code) do update
+                set role = excluded.role,
+                    enabled = true
+                returning organization_id,
+                          user_id,
+                          product_code,
+                          role,
+                          enabled,
+                          created_at
+                """,
+                (rs, rowNum) -> ProductAccessEntity.builder()
+                        .id(new ProductAccessId(
+                                rs.getObject("organization_id", UUID.class),
+                                rs.getObject("user_id", UUID.class),
+                                rs.getString("product_code")
+                        ))
+                        .role(rs.getString("role"))
+                        .enabled(rs.getBoolean("enabled"))
+                        .createdAt(rs.getObject("created_at", OffsetDateTime.class))
+                        .build(),
+                organizationId,
+                targetUserId,
+                productCode,
+                role
+        );
     }
 
     @Transactional
