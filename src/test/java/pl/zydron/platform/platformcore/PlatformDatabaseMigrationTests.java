@@ -311,7 +311,7 @@ class PlatformDatabaseMigrationTests {
                 "product_registration",
                 "registration-1",
                 Map.of("status", "active")
-        );
+        ).join();
 
         String status = jdbcTemplate.queryForObject(
                 """
@@ -331,10 +331,18 @@ class PlatformDatabaseMigrationTests {
                 "select to_regclass('audit.audit_events_product_type_created_idx') is not null",
                 Boolean.class
         );
+        Boolean appendOnly = jdbcTemplate.queryForObject(
+                """
+                select has_table_privilege('platform_backend_role', 'audit.audit_events', 'select,insert')
+                   and not has_table_privilege('platform_backend_role', 'audit.audit_events', 'update,delete')
+                """,
+                Boolean.class
+        );
 
         assertThat(status).isEqualTo("active");
         assertThat(orgIndexExists).isTrue();
         assertThat(productIndexExists).isTrue();
+        assertThat(appendOnly).isTrue();
     }
 
     @Test

@@ -12,6 +12,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -50,6 +51,7 @@ class UsageServiceTests {
                 .build();
 
         when(usageReservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+        when(usageReservationRepository.findByIdAndUserId(reservationId, callerId)).thenReturn(Optional.of(reservation));
         when(jdbcTemplate.queryForObject(
                 eq("select usage.finalize_usage(?, ?, ?)"),
                 eq(String.class),
@@ -62,5 +64,18 @@ class UsageServiceTests {
 
         assertThat(result.reason()).isEqualTo("reservation_user_mismatch");
         verify(tenantService).requireActiveMember(organizationId, callerId);
+    }
+
+    @Test
+    void finalizeUsageHidesReservationsOwnedByAnotherUser() {
+        UUID reservationId = UUID.randomUUID();
+        UUID callerId = UUID.randomUUID();
+
+        when(usageReservationRepository.findByIdAndUserId(reservationId, callerId)).thenReturn(Optional.empty());
+
+        FinalizationResult result = usageService.finalizeUsage(reservationId, callerId, BigDecimal.ONE);
+
+        assertThat(result.reason()).isEqualTo("reservation_not_found");
+        verify(tenantService, never()).requireActiveMember(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 }

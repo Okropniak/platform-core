@@ -19,7 +19,8 @@ on audit.audit_events (product_code, event_type, created_at desc);
 create index audit_events_user_created_idx
 on audit.audit_events (user_id, created_at desc);
 
-grant select, insert, update, delete on audit.audit_events to platform_backend_role;
+grant select, insert on audit.audit_events to platform_backend_role;
+revoke update, delete on audit.audit_events from platform_backend_role;
 grant usage, select on all sequences in schema audit to platform_backend_role;
 
 grant select on audit.audit_events to authenticated;

@@ -80,8 +80,11 @@ public class UsageService {
 
     @Transactional
     public FinalizationResult finalizeUsage(UUID reservationId, UUID userId, BigDecimal actualAmount) {
-        usageReservationRepository.findById(reservationId)
-                .ifPresent(reservation -> tenantService.requireActiveMember(reservation.getOrganizationId(), userId));
+        var reservation = usageReservationRepository.findByIdAndUserId(reservationId, userId);
+        if (reservation.isEmpty()) {
+            return new FinalizationResult(false, "reservation_not_found", reservationId, null, null, null, null);
+        }
+        tenantService.requireActiveMember(reservation.get().getOrganizationId(), userId);
 
         FinalizationResult result = readResult(jdbcTemplate.queryForObject(
                 "select usage.finalize_usage(?, ?, ?)",
@@ -90,17 +93,23 @@ public class UsageService {
                 userId,
                 actualAmount
         ), FinalizationResult.class);
-        if (!result.finalized() && "limit_exceeded".equals(result.reason())) {
-            usageReservationRepository.findById(reservationId)
-                    .ifPresent(reservation -> auditService.record(
-                            reservation.getOrganizationId(),
-                            userId,
-                            reservation.getProductCode(),
-                            "usage_limit_exceeded",
-                            "usage_reservation",
-                            reservationId.toString(),
-                            Map.of("metricCode", reservation.getMetricCode(), "operation", "finalize")
-                    ));
+        if (!result.finalized()) {
+            String eventType = "limit_exceeded".equals(result.reason())
+                    ? "usage_limit_exceeded"
+                    : "usage_operation_rejected";
+            auditService.record(
+                    reservation.get().getOrganizationId(),
+                    userId,
+                    reservation.get().getProductCode(),
+                    eventType,
+                    "usage_reservation",
+                    reservationId.toString(),
+                    Map.of(
+                            "metricCode", reservation.get().getMetricCode(),
+                            "operation", "finalize",
+                            "reason", result.reason()
+                    )
+            );
         }
         return result;
     }

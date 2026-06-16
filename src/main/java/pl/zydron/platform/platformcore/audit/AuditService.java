@@ -1,10 +1,13 @@
 package pl.zydron.platform.platformcore.audit;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
 
 @Service
@@ -13,8 +16,9 @@ public class AuditService {
 
     private final AuditEventRepository auditEventRepository;
 
-    @Transactional
-    public AuditEventEntity record(
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public CompletableFuture<AuditEventEntity> record(
             UUID organizationId,
             UUID userId,
             String productCode,
@@ -23,7 +27,7 @@ public class AuditService {
             String entityId,
             Map<String, Object> metadata
     ) {
-        return auditEventRepository.save(AuditEventEntity.builder()
+        AuditEventEntity event = auditEventRepository.save(AuditEventEntity.builder()
                 .organizationId(organizationId)
                 .userId(userId)
                 .productCode(productCode)
@@ -32,5 +36,6 @@ public class AuditService {
                 .entityId(entityId)
                 .metadata(metadata == null ? Map.of() : Map.copyOf(metadata))
                 .build());
+        return CompletableFuture.completedFuture(event);
     }
 }
