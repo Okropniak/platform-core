@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.common.BadRequestException;
 import pl.zydron.platform.platformcore.tenants.TenantService;
 import tools.jackson.core.JacksonException;
@@ -11,6 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -20,6 +22,7 @@ public class UsageService {
     private final UsageCounterRepository usageCounterRepository;
     private final UsageReservationRepository usageReservationRepository;
     private final TenantService tenantService;
+    private final AuditService auditService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
@@ -35,7 +38,7 @@ public class UsageService {
         tenantService.requireActiveMember(organizationId, userId);
         requireIdempotencyKey(idempotencyKey);
 
-        return readResult(jdbcTemplate.queryForObject(
+        UsageResult result = readResult(jdbcTemplate.queryForObject(
                 "select usage.consume_usage(?, ?, ?, ?, ?, ?)",
                 String.class,
                 organizationId,
@@ -45,6 +48,8 @@ public class UsageService {
                 amount,
                 idempotencyKey
         ), UsageResult.class);
+        auditUsageLimitExceeded(organizationId, userId, productCode, metricCode, result.accepted(), result.reason());
+        return result;
     }
 
     @Transactional
@@ -59,7 +64,7 @@ public class UsageService {
         tenantService.requireActiveMember(organizationId, userId);
         requireIdempotencyKey(idempotencyKey);
 
-        return readResult(jdbcTemplate.queryForObject(
+        ReservationResult result = readResult(jdbcTemplate.queryForObject(
                 "select usage.reserve_usage(?, ?, ?, ?, ?, ?)",
                 String.class,
                 organizationId,
@@ -69,6 +74,8 @@ public class UsageService {
                 amount,
                 idempotencyKey
         ), ReservationResult.class);
+        auditUsageLimitExceeded(organizationId, userId, productCode, metricCode, result.accepted(), result.reason());
+        return result;
     }
 
     @Transactional
@@ -76,13 +83,26 @@ public class UsageService {
         usageReservationRepository.findById(reservationId)
                 .ifPresent(reservation -> tenantService.requireActiveMember(reservation.getOrganizationId(), userId));
 
-        return readResult(jdbcTemplate.queryForObject(
+        FinalizationResult result = readResult(jdbcTemplate.queryForObject(
                 "select usage.finalize_usage(?, ?, ?)",
                 String.class,
                 reservationId,
                 userId,
                 actualAmount
         ), FinalizationResult.class);
+        if (!result.finalized() && "limit_exceeded".equals(result.reason())) {
+            usageReservationRepository.findById(reservationId)
+                    .ifPresent(reservation -> auditService.record(
+                            reservation.getOrganizationId(),
+                            userId,
+                            reservation.getProductCode(),
+                            "usage_limit_exceeded",
+                            "usage_reservation",
+                            reservationId.toString(),
+                            Map.of("metricCode", reservation.getMetricCode(), "operation", "finalize")
+                    ));
+        }
+        return result;
     }
 
     @Transactional(readOnly = true)
@@ -110,6 +130,27 @@ public class UsageService {
             return objectMapper.readValue(payload, type);
         } catch (JacksonException exception) {
             throw new IllegalStateException("Invalid usage result returned by database.", exception);
+        }
+    }
+
+    private void auditUsageLimitExceeded(
+            UUID organizationId,
+            UUID userId,
+            String productCode,
+            String metricCode,
+            boolean accepted,
+            String reason
+    ) {
+        if (!accepted && "limit_exceeded".equals(reason)) {
+            auditService.record(
+                    organizationId,
+                    userId,
+                    productCode,
+                    "usage_limit_exceeded",
+                    "usage_metric",
+                    metricCode,
+                    Map.of("metricCode", metricCode)
+            );
         }
     }
 }

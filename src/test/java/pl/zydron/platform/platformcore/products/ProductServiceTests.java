@@ -3,6 +3,7 @@ package pl.zydron.platform.platformcore.products;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.common.BadRequestException;
 import pl.zydron.platform.platformcore.tenants.TenantService;
 import tools.jackson.databind.ObjectMapper;
@@ -26,12 +27,14 @@ class ProductServiceTests {
     private final ProductRegistrationRepository productRegistrationRepository = mock(ProductRegistrationRepository.class);
     private final ProductAccessRepository productAccessRepository = mock(ProductAccessRepository.class);
     private final TenantService tenantService = mock(TenantService.class);
+    private final AuditService auditService = mock(AuditService.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final ProductService productService = new ProductService(
             productRepository,
             productRegistrationRepository,
             productAccessRepository,
             tenantService,
+            auditService,
             jdbcTemplate,
             new ObjectMapper()
     );

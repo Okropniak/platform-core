@@ -4,12 +4,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.common.BadRequestException;
 import pl.zydron.platform.platformcore.tenants.TenantService;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -20,6 +22,7 @@ public class ProductService {
     private final ProductRegistrationRepository productRegistrationRepository;
     private final ProductAccessRepository productAccessRepository;
     private final TenantService tenantService;
+    private final AuditService auditService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
@@ -34,7 +37,7 @@ public class ProductService {
         tenantService.requireActiveMember(organizationId, userId);
         requireActiveProduct(productCode);
 
-        return jdbcTemplate.queryForObject(
+        ProductRegistrationEntity registration = jdbcTemplate.queryForObject(
                 """
                 insert into platform.product_registrations (
                     organization_id,
@@ -74,6 +77,16 @@ public class ProductService {
                 termsVersion,
                 privacyVersion
         );
+        auditService.record(
+                organizationId,
+                userId,
+                productCode,
+                "product_registered",
+                "product_registration",
+                registration.getId().toString(),
+                Map.of("status", registration.getStatus())
+        );
+        return registration;
     }
 
     @Transactional
@@ -88,7 +101,7 @@ public class ProductService {
         tenantService.requireActiveMember(organizationId, targetUserId);
         requireActiveProduct(productCode);
 
-        return jdbcTemplate.queryForObject(
+        ProductAccessEntity access = jdbcTemplate.queryForObject(
                 """
                 insert into platform.product_access (
                     organization_id,
@@ -123,6 +136,16 @@ public class ProductService {
                 productCode,
                 role
         );
+        auditService.record(
+                organizationId,
+                requestingUserId,
+                productCode,
+                "product_access_granted",
+                "product_access",
+                targetUserId.toString(),
+                Map.of("targetUserId", targetUserId.toString(), "role", access.getRole())
+        );
+        return access;
     }
 
     @Transactional
@@ -139,6 +162,15 @@ public class ProductService {
         var access = productAccessRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException("Product access does not exist."));
         access.setEnabled(false);
+        auditService.record(
+                organizationId,
+                requestingUserId,
+                productCode,
+                "product_access_revoked",
+                "product_access",
+                targetUserId.toString(),
+                Map.of("targetUserId", targetUserId.toString())
+        );
         return access;
     }
 

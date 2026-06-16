@@ -5,8 +5,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.entitlements.EntitlementService;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,6 +23,9 @@ class PlatformDatabaseMigrationTests {
 
     @Autowired
     EntitlementService entitlementService;
+
+    @Autowired
+    AuditService auditService;
 
     @Test
     void grantsAuthenticatedExecuteOnRlsHelper() {
@@ -285,6 +290,51 @@ class PlatformDatabaseMigrationTests {
         assertThat(consumeAllowed).isTrue();
         assertThat(reserveAllowed).isTrue();
         assertThat(finalizeAllowed).isTrue();
+    }
+
+    @Test
+    void auditSchemaSupportsJsonMetadataAndExpectedIndexes() {
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = UUID.randomUUID();
+        jdbcTemplate.update("insert into auth.users (id) values (?)", userId);
+        jdbcTemplate.update(
+                "insert into platform.organizations (id, name, type, created_by) values (?, 'Audit Org', 'company', ?)",
+                organizationId,
+                userId
+        );
+
+        auditService.record(
+                organizationId,
+                userId,
+                "search_saas",
+                "product_registered",
+                "product_registration",
+                "registration-1",
+                Map.of("status", "active")
+        );
+
+        String status = jdbcTemplate.queryForObject(
+                """
+                select metadata->>'status'
+                from audit.audit_events
+                where organization_id = ?
+                  and event_type = 'product_registered'
+                """,
+                String.class,
+                organizationId
+        );
+        Boolean orgIndexExists = jdbcTemplate.queryForObject(
+                "select to_regclass('audit.audit_events_organization_created_idx') is not null",
+                Boolean.class
+        );
+        Boolean productIndexExists = jdbcTemplate.queryForObject(
+                "select to_regclass('audit.audit_events_product_type_created_idx') is not null",
+                Boolean.class
+        );
+
+        assertThat(status).isEqualTo("active");
+        assertThat(orgIndexExists).isTrue();
+        assertThat(productIndexExists).isTrue();
     }
 
     @Test
