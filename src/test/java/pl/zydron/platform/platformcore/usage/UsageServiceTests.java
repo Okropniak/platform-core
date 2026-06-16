@@ -50,7 +50,6 @@ class UsageServiceTests {
                 .idempotencyKey("search_saas:reserve:test")
                 .build();
 
-        when(usageReservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
         when(usageReservationRepository.findByIdAndUserId(reservationId, callerId)).thenReturn(Optional.of(reservation));
         when(jdbcTemplate.queryForObject(
                 eq("select usage.finalize_usage(?, ?, ?)"),

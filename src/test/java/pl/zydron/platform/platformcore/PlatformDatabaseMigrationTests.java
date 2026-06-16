@@ -293,7 +293,7 @@ class PlatformDatabaseMigrationTests {
     }
 
     @Test
-    void auditSchemaSupportsJsonMetadataAndExpectedIndexes() {
+    void auditSchemaSupportsJsonMetadataAndExpectedIndexes() throws InterruptedException {
         UUID userId = UUID.randomUUID();
         UUID organizationId = UUID.randomUUID();
         jdbcTemplate.update("insert into auth.users (id) values (?)", userId);
@@ -311,18 +311,9 @@ class PlatformDatabaseMigrationTests {
                 "product_registration",
                 "registration-1",
                 Map.of("status", "active")
-        ).join();
-
-        String status = jdbcTemplate.queryForObject(
-                """
-                select metadata->>'status'
-                from audit.audit_events
-                where organization_id = ?
-                  and event_type = 'product_registered'
-                """,
-                String.class,
-                organizationId
         );
+
+        String status = awaitAuditStatus(organizationId);
         Boolean orgIndexExists = jdbcTemplate.queryForObject(
                 "select to_regclass('audit.audit_events_organization_created_idx') is not null",
                 Boolean.class
@@ -681,5 +672,25 @@ class PlatformDatabaseMigrationTests {
                 metricCode,
                 limitValue
         );
+    }
+
+    private String awaitAuditStatus(UUID organizationId) throws InterruptedException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            String status = jdbcTemplate.queryForObject(
+                    """
+                    select max(metadata->>'status')
+                    from audit.audit_events
+                    where organization_id = ?
+                      and event_type = 'product_registered'
+                    """,
+                    String.class,
+                    organizationId
+            );
+            if (status != null) {
+                return status;
+            }
+            Thread.sleep(50);
+        }
+        return null;
     }
 }

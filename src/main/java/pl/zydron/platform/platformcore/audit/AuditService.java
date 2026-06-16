@@ -7,7 +7,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
 
 @Service
@@ -16,9 +15,9 @@ public class AuditService {
 
     private final AuditEventRepository auditEventRepository;
 
-    @Async
+    @Async("auditTaskExecutor")
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public CompletableFuture<AuditEventEntity> record(
+    public void record(
             UUID organizationId,
             UUID userId,
             String productCode,
@@ -27,7 +26,7 @@ public class AuditService {
             String entityId,
             Map<String, Object> metadata
     ) {
-        AuditEventEntity event = auditEventRepository.save(AuditEventEntity.builder()
+        auditEventRepository.save(AuditEventEntity.builder()
                 .organizationId(organizationId)
                 .userId(userId)
                 .productCode(productCode)
@@ -36,6 +35,5 @@ public class AuditService {
                 .entityId(entityId)
                 .metadata(metadata == null ? Map.of() : Map.copyOf(metadata))
                 .build());
-        return CompletableFuture.completedFuture(event);
     }
 }

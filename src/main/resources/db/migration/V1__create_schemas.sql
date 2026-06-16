@@ -25,7 +25,7 @@ alter default privileges in schema platform grant select, insert, update, delete
 alter default privileges in schema billing grant select, insert, update, delete on tables to platform_backend_role;
 alter default privileges in schema entitlement grant select, insert, update, delete on tables to platform_backend_role;
 alter default privileges in schema usage grant select, insert, update, delete on tables to platform_backend_role;
-alter default privileges in schema audit grant select, insert on tables to platform_backend_role;
+alter default privileges in schema audit grant select, insert, update, delete on tables to platform_backend_role;
 
 alter default privileges in schema platform grant usage, select, update on sequences to platform_backend_role;
 alter default privileges in schema billing grant usage, select, update on sequences to platform_backend_role;

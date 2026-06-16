@@ -93,7 +93,7 @@ public class UsageService {
                 userId,
                 actualAmount
         ), FinalizationResult.class);
-        if (!result.finalized()) {
+        if (!result.finalized() && !"reservation_not_active".equals(result.reason())) {
             String eventType = "limit_exceeded".equals(result.reason())
                     ? "usage_limit_exceeded"
                     : "usage_operation_rejected";
