@@ -18,6 +18,7 @@ import java.util.UUID;
 public class UsageService {
 
     private final UsageCounterRepository usageCounterRepository;
+    private final UsageReservationRepository usageReservationRepository;
     private final TenantService tenantService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -72,6 +73,9 @@ public class UsageService {
 
     @Transactional
     public FinalizationResult finalizeUsage(UUID reservationId, UUID userId, BigDecimal actualAmount) {
+        usageReservationRepository.findByIdAndUserId(reservationId, userId)
+                .ifPresent(reservation -> tenantService.requireActiveMember(reservation.getOrganizationId(), userId));
+
         return readResult(jdbcTemplate.queryForObject(
                 "select usage.finalize_usage(?, ?, ?)",
                 String.class,

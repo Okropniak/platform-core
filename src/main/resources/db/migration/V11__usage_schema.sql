@@ -81,7 +81,7 @@ create table usage.usage_reservations (
 
     constraint usage_reservations_user_scope_check
         check (
-            (counter_scope = 'organization' and user_id is null)
+            counter_scope = 'organization'
             or
             (counter_scope in ('user', 'organization_and_user') and user_id is not null)
         )

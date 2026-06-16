@@ -343,6 +343,44 @@ class PlatformDatabaseMigrationTests {
     }
 
     @Test
+    void consumeUsageEnforcesUserEntitlementAndUpdatesUserCounter() {
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = createUsageFixture(userId, "User Consume Org", "ai_search_usage", "ai_search_per_use", "100");
+        addUserEntitlement(organizationId, userId, "ai_search_usage", "ai_search_per_use", "2");
+
+        Boolean firstAccepted = jdbcTemplate.queryForObject(
+                "select (usage.consume_usage(?, ?, 'search_saas', 'ai_search_usage', 2, 'search_saas:consume:user-1')->>'accepted')::boolean",
+                Boolean.class,
+                organizationId,
+                userId
+        );
+        String secondReason = jdbcTemplate.queryForObject(
+                "select usage.consume_usage(?, ?, 'search_saas', 'ai_search_usage', 1, 'search_saas:consume:user-2')->>'reason'",
+                String.class,
+                organizationId,
+                userId
+        );
+        String userUsed = jdbcTemplate.queryForObject(
+                """
+                select used_value::text
+                from usage.usage_counters
+                where organization_id = ?
+                  and user_id = ?
+                  and product_code = 'search_saas'
+                  and metric_code = 'ai_search_usage'
+                  and counter_scope = 'user'
+                """,
+                String.class,
+                organizationId,
+                userId
+        );
+
+        assertThat(firstAccepted).isTrue();
+        assertThat(secondReason).isEqualTo("limit_exceeded");
+        assertThat(userUsed).isEqualTo("2");
+    }
+
+    @Test
     void reserveAndFinalizeUsageMovesReservedToUsed() {
         UUID userId = UUID.randomUUID();
         UUID organizationId = createUsageFixture(userId, "Reserve Org", "ai_search_tokens", "ai_search_tokens", "10");
@@ -387,6 +425,85 @@ class PlatformDatabaseMigrationTests {
         assertThat(finalized).isTrue();
         assertThat(used).isEqualTo("5");
         assertThat(reserved).isEqualTo("0");
+    }
+
+    @Test
+    void reserveAndFinalizeUsageMovesUserCounterWhenUserEntitlementExists() {
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = createUsageFixture(userId, "User Reserve Org", "ai_search_tokens", "ai_search_tokens", "100");
+        addUserEntitlement(organizationId, userId, "ai_search_tokens", "ai_search_tokens", "10");
+
+        String reservationId = jdbcTemplate.queryForObject(
+                "select usage.reserve_usage(?, ?, 'search_saas', 'ai_search_tokens', 7, 'search_saas:reserve:user-1')->>'reservationId'",
+                String.class,
+                organizationId,
+                userId
+        );
+        String scope = jdbcTemplate.queryForObject(
+                "select counter_scope from usage.usage_reservations where id = ?::uuid",
+                String.class,
+                reservationId
+        );
+        Boolean finalized = jdbcTemplate.queryForObject(
+                "select (usage.finalize_usage(?::uuid, ?, 5)->>'finalized')::boolean",
+                Boolean.class,
+                reservationId,
+                userId
+        );
+        String userUsed = jdbcTemplate.queryForObject(
+                """
+                select used_value::text
+                from usage.usage_counters
+                where organization_id = ?
+                  and user_id = ?
+                  and product_code = 'search_saas'
+                  and metric_code = 'ai_search_tokens'
+                  and counter_scope = 'user'
+                """,
+                String.class,
+                organizationId,
+                userId
+        );
+        String userReserved = jdbcTemplate.queryForObject(
+                """
+                select reserved_value::text
+                from usage.usage_counters
+                where organization_id = ?
+                  and user_id = ?
+                  and product_code = 'search_saas'
+                  and metric_code = 'ai_search_tokens'
+                  and counter_scope = 'user'
+                """,
+                String.class,
+                organizationId,
+                userId
+        );
+
+        assertThat(scope).isEqualTo("organization_and_user");
+        assertThat(finalized).isTrue();
+        assertThat(userUsed).isEqualTo("5");
+        assertThat(userReserved).isEqualTo("0");
+    }
+
+    @Test
+    void finalizeUsageRejectsActualAmountGreaterThanReservation() {
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = createUsageFixture(userId, "Overspend Org", "ai_search_tokens", "ai_search_tokens", "10");
+
+        String reservationId = jdbcTemplate.queryForObject(
+                "select usage.reserve_usage(?, ?, 'search_saas', 'ai_search_tokens', 7, 'search_saas:reserve:overspend')->>'reservationId'",
+                String.class,
+                organizationId,
+                userId
+        );
+        String reason = jdbcTemplate.queryForObject(
+                "select usage.finalize_usage(?::uuid, ?, 8)->>'reason'",
+                String.class,
+                reservationId,
+                userId
+        );
+
+        assertThat(reason).isEqualTo("actual_exceeds_reservation");
     }
 
     @Test
@@ -435,5 +552,35 @@ class PlatformDatabaseMigrationTests {
                 limitValue
         );
         return organizationId;
+    }
+
+    private void addUserEntitlement(
+            UUID organizationId,
+            UUID userId,
+            String metricCode,
+            String featureCode,
+            String limitValue
+    ) {
+        jdbcTemplate.update(
+                """
+                insert into entitlement.user_entitlements (
+                    organization_id,
+                    user_id,
+                    product_code,
+                    feature_code,
+                    metric_code,
+                    enabled,
+                    limit_value,
+                    period,
+                    source
+                )
+                values (?, ?, 'search_saas', ?, ?, true, ?::numeric, 'monthly', 'manual')
+                """,
+                organizationId,
+                userId,
+                featureCode,
+                metricCode,
+                limitValue
+        );
     }
 }
