@@ -268,8 +268,172 @@ class PlatformDatabaseMigrationTests {
     }
 
     @Test
+    void grantsBackendExecuteOnUsageFunctions() {
+        Boolean consumeAllowed = jdbcTemplate.queryForObject(
+                "select has_function_privilege('platform_backend_role', 'usage.consume_usage(uuid, uuid, text, text, numeric, text)', 'execute')",
+                Boolean.class
+        );
+        Boolean reserveAllowed = jdbcTemplate.queryForObject(
+                "select has_function_privilege('platform_backend_role', 'usage.reserve_usage(uuid, uuid, text, text, numeric, text)', 'execute')",
+                Boolean.class
+        );
+        Boolean finalizeAllowed = jdbcTemplate.queryForObject(
+                "select has_function_privilege('platform_backend_role', 'usage.finalize_usage(uuid, uuid, numeric)', 'execute')",
+                Boolean.class
+        );
+
+        assertThat(consumeAllowed).isTrue();
+        assertThat(reserveAllowed).isTrue();
+        assertThat(finalizeAllowed).isTrue();
+    }
+
+    @Test
+    void consumeUsageIsIdempotentAndEnforcesLimit() {
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = createUsageFixture(userId, "Consume Org", "ai_search_usage", "ai_search_per_use", "3");
+
+        Boolean firstAccepted = jdbcTemplate.queryForObject(
+                "select (usage.consume_usage(?, ?, 'search_saas', 'ai_search_usage', 2, 'search_saas:consume:test-1')->>'accepted')::boolean",
+                Boolean.class,
+                organizationId,
+                userId
+        );
+        Boolean retryAccepted = jdbcTemplate.queryForObject(
+                "select (usage.consume_usage(?, ?, 'search_saas', 'ai_search_usage', 2, 'search_saas:consume:test-1')->>'accepted')::boolean",
+                Boolean.class,
+                organizationId,
+                userId
+        );
+        String secondReason = jdbcTemplate.queryForObject(
+                "select usage.consume_usage(?, ?, 'search_saas', 'ai_search_usage', 2, 'search_saas:consume:test-2')->>'reason'",
+                String.class,
+                organizationId,
+                userId
+        );
+        String used = jdbcTemplate.queryForObject(
+                """
+                select used_value::text
+                from usage.usage_counters
+                where organization_id = ?
+                  and product_code = 'search_saas'
+                  and metric_code = 'ai_search_usage'
+                  and counter_scope = 'organization'
+                """,
+                String.class,
+                organizationId
+        );
+        Integer eventCount = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from usage.usage_events
+                where organization_id = ?
+                  and product_code = 'search_saas'
+                  and metric_code = 'ai_search_usage'
+                  and event_type = 'consume'
+                """,
+                Integer.class,
+                organizationId
+        );
+
+        assertThat(firstAccepted).isTrue();
+        assertThat(retryAccepted).isTrue();
+        assertThat(secondReason).isEqualTo("limit_exceeded");
+        assertThat(used).isEqualTo("2");
+        assertThat(eventCount).isEqualTo(2);
+    }
+
+    @Test
+    void reserveAndFinalizeUsageMovesReservedToUsed() {
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = createUsageFixture(userId, "Reserve Org", "ai_search_tokens", "ai_search_tokens", "10");
+
+        String reservationId = jdbcTemplate.queryForObject(
+                "select usage.reserve_usage(?, ?, 'search_saas', 'ai_search_tokens', 7, 'search_saas:reserve:test-1')->>'reservationId'",
+                String.class,
+                organizationId,
+                userId
+        );
+        Boolean finalized = jdbcTemplate.queryForObject(
+                "select (usage.finalize_usage(?::uuid, ?, 5)->>'finalized')::boolean",
+                Boolean.class,
+                reservationId,
+                userId
+        );
+        String used = jdbcTemplate.queryForObject(
+                """
+                select used_value::text
+                from usage.usage_counters
+                where organization_id = ?
+                  and product_code = 'search_saas'
+                  and metric_code = 'ai_search_tokens'
+                  and counter_scope = 'organization'
+                """,
+                String.class,
+                organizationId
+        );
+        String reserved = jdbcTemplate.queryForObject(
+                """
+                select reserved_value::text
+                from usage.usage_counters
+                where organization_id = ?
+                  and product_code = 'search_saas'
+                  and metric_code = 'ai_search_tokens'
+                  and counter_scope = 'organization'
+                """,
+                String.class,
+                organizationId
+        );
+
+        assertThat(finalized).isTrue();
+        assertThat(used).isEqualTo("5");
+        assertThat(reserved).isEqualTo("0");
+    }
+
+    @Test
     void testAuthUidFailsWhenSubjectIsNotConfigured() {
         assertThatThrownBy(() -> jdbcTemplate.queryForObject("select auth.uid()", String.class))
                 .hasMessageContaining("test auth.uid() called without request.jwt.claim.sub");
+    }
+
+    private UUID createUsageFixture(
+            UUID userId,
+            String organizationName,
+            String metricCode,
+            String featureCode,
+            String limitValue
+    ) {
+        UUID organizationId = UUID.randomUUID();
+        jdbcTemplate.update("insert into auth.users (id) values (?)", userId);
+        jdbcTemplate.update(
+                "insert into platform.organizations (id, name, type, created_by) values (?, ?, 'company', ?)",
+                organizationId,
+                organizationName,
+                userId
+        );
+        jdbcTemplate.update(
+                "insert into platform.organization_members (organization_id, user_id, role, status) values (?, ?, 'owner', 'active')",
+                organizationId,
+                userId
+        );
+        jdbcTemplate.update(
+                """
+                insert into entitlement.organization_entitlements (
+                    organization_id,
+                    product_code,
+                    feature_code,
+                    metric_code,
+                    enabled,
+                    limit_value,
+                    period,
+                    source
+                )
+                values (?, 'search_saas', ?, ?, true, ?::numeric, 'monthly', 'manual')
+                """,
+                organizationId,
+                featureCode,
+                metricCode,
+                limitValue
+        );
+        return organizationId;
     }
 }
