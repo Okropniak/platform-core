@@ -2,7 +2,6 @@ package pl.zydron.platform.platformcore.billing;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -11,7 +10,6 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -65,31 +63,9 @@ public class BillingController {
                 .toList();
     }
 
-    @PutMapping("/api/organizations/{organizationId}/subscriptions/{productCode}")
-    SubscriptionResponse changeSubscription(
-            @AuthenticationPrincipal Jwt jwt,
-            @PathVariable UUID organizationId,
-            @PathVariable String productCode,
-            @Valid @RequestBody ChangeSubscriptionRequest request
-    ) {
-        return SubscriptionResponse.from(billingService.onSubscriptionChanged(
-                organizationId,
-                JwtUser.userId(jwt),
-                productCode,
-                request.planCode(),
-                request.status()
-        ));
-    }
-
     public record CreateSubscriptionRequest(
             @NotBlank String productCode,
             @NotBlank String planCode
-    ) {
-    }
-
-    public record ChangeSubscriptionRequest(
-            @NotBlank String planCode,
-            @NotBlank @Pattern(regexp = "trial|active|past_due|cancelled|expired|manual") String status
     ) {
     }
 

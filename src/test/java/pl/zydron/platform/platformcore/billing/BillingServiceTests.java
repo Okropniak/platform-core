@@ -90,6 +90,99 @@ class BillingServiceTests {
     }
 
     @Test
+    void cancelSubscriptionDisablesPlanEntitlementsWhenNoFreePlanExists() {
+        UUID organizationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        SubscriptionEntity existing = SubscriptionEntity.builder()
+                .id(UUID.randomUUID())
+                .organizationId(organizationId)
+                .productCode("enterprise_saas")
+                .planCode("pro")
+                .status("active")
+                .provider("manual")
+                .createdAt(OffsetDateTime.now())
+                .updatedAt(OffsetDateTime.now())
+                .build();
+
+        when(subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, "enterprise_saas"))
+                .thenReturn(Optional.of(existing));
+        when(subscriptionRepository.save(any(SubscriptionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(planRepository.findByProductCodeAndPlanCodeAndActiveTrue("enterprise_saas", "free"))
+                .thenReturn(Optional.empty());
+
+        billingService.cancelSubscription(organizationId, userId, "enterprise_saas");
+
+        verify(entitlementSyncService).disablePlanEntitlements(organizationId, "enterprise_saas");
+        verify(entitlementSyncService, never()).syncFromPlan(organizationId, "enterprise_saas", "free");
+    }
+
+    @Test
+    void subscriptionChangeCreatesTerminalSubscriptionWithCancelledAt() {
+        UUID organizationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        PlanEntity plan = searchPlan("pro");
+
+        when(planRepository.findByProductCodeAndPlanCodeAndActiveTrue("search_saas", "pro"))
+                .thenReturn(Optional.of(plan));
+        when(subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, "search_saas"))
+                .thenReturn(Optional.empty());
+        when(subscriptionRepository.save(any(SubscriptionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(planRepository.findByProductCodeAndPlanCodeAndActiveTrue("search_saas", "free"))
+                .thenReturn(Optional.of(searchPlan("free")));
+
+        SubscriptionEntity cancelled = billingService.onSubscriptionChanged(
+                organizationId,
+                userId,
+                "search_saas",
+                "pro",
+                "cancelled"
+        );
+
+        assertThat(cancelled.getStatus()).isEqualTo("cancelled");
+        assertThat(cancelled.getCancelledAt()).isNotNull();
+        verify(entitlementSyncService).syncFromPlan(organizationId, "search_saas", "free");
+    }
+
+    @Test
+    void expiredSubscriptionRecordsTerminalTimestamp() {
+        UUID organizationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        PlanEntity plan = searchPlan("pro");
+        SubscriptionEntity existing = SubscriptionEntity.builder()
+                .id(UUID.randomUUID())
+                .organizationId(organizationId)
+                .productCode("search_saas")
+                .planCode("pro")
+                .status("active")
+                .provider("manual")
+                .createdAt(OffsetDateTime.now())
+                .updatedAt(OffsetDateTime.now())
+                .build();
+
+        when(planRepository.findByProductCodeAndPlanCodeAndActiveTrue("search_saas", "pro"))
+                .thenReturn(Optional.of(plan));
+        when(subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, "search_saas"))
+                .thenReturn(Optional.of(existing));
+        when(subscriptionRepository.save(any(SubscriptionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(planRepository.findByProductCodeAndPlanCodeAndActiveTrue("search_saas", "free"))
+                .thenReturn(Optional.of(searchPlan("free")));
+
+        SubscriptionEntity expired = billingService.onSubscriptionChanged(
+                organizationId,
+                userId,
+                "search_saas",
+                "pro",
+                "expired"
+        );
+
+        assertThat(expired.getStatus()).isEqualTo("expired");
+        assertThat(expired.getCancelledAt()).isNotNull();
+    }
+
+    @Test
     void rejectsUnknownPlanBeforeWritingSubscription() {
         UUID organizationId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();

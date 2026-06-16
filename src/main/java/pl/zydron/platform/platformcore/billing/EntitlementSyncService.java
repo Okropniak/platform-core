@@ -17,4 +17,9 @@ public class EntitlementSyncService {
     public void syncFromPlan(UUID organizationId, String productCode, String planCode) {
         entitlementService.syncEntitlementsFromPlan(organizationId, productCode, planCode);
     }
+
+    @Transactional
+    public void disablePlanEntitlements(UUID organizationId, String productCode) {
+        entitlementService.disablePlanEntitlements(organizationId, productCode);
+    }
 }

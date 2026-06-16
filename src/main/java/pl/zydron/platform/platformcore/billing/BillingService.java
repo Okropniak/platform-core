@@ -36,8 +36,8 @@ public class BillingService {
         OffsetDateTime now = OffsetDateTime.now();
 
         SubscriptionEntity subscription = subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, productCode)
-                .map(existing -> activateExisting(existing, plan, now))
                 .orElseGet(() -> newSubscription(organizationId, plan, now));
+        applyStatus(subscription, plan, "active", now);
 
         SubscriptionEntity saved = subscriptionRepository.save(subscription);
         entitlementSyncService.syncFromPlan(organizationId, productCode, planCode);
@@ -89,9 +89,8 @@ public class BillingService {
         OffsetDateTime now = OffsetDateTime.now();
 
         SubscriptionEntity subscription = subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, productCode)
-                .map(existing -> updateStatus(existing, plan, newStatus, now))
                 .orElseGet(() -> newSubscription(organizationId, plan, now));
-        subscription.setStatus(newStatus);
+        applyStatus(subscription, plan, newStatus, now);
 
         SubscriptionEntity saved = subscriptionRepository.save(subscription);
         if ("active".equals(newStatus) || "manual".equals(newStatus)) {
@@ -121,35 +120,19 @@ public class BillingService {
                 .orElseThrow(() -> new BadRequestException("Plan does not exist or is not active."));
     }
 
-    private SubscriptionEntity activateExisting(SubscriptionEntity subscription, PlanEntity plan, OffsetDateTime now) {
+    private void applyStatus(SubscriptionEntity subscription, PlanEntity plan, String status, OffsetDateTime now) {
         subscription.setPlanCode(plan.getPlanCode());
-        subscription.setStatus("active");
+        subscription.setStatus(status);
         subscription.setProvider("manual");
-        subscription.setCurrentPeriodStart(now);
-        subscription.setCurrentPeriodEnd(periodEnd(plan, now));
-        subscription.setCancelledAt(null);
-        subscription.setUpdatedAt(now);
-        return subscription;
-    }
-
-    private SubscriptionEntity updateStatus(
-            SubscriptionEntity subscription,
-            PlanEntity plan,
-            String newStatus,
-            OffsetDateTime now
-    ) {
-        subscription.setPlanCode(plan.getPlanCode());
-        subscription.setStatus(newStatus);
-        subscription.setUpdatedAt(now);
-        if ("active".equals(newStatus) || "manual".equals(newStatus)) {
+        if ("active".equals(status) || "manual".equals(status) || "trial".equals(status)) {
             subscription.setCurrentPeriodStart(now);
             subscription.setCurrentPeriodEnd(periodEnd(plan, now));
             subscription.setCancelledAt(null);
         }
-        if ("cancelled".equals(newStatus)) {
+        if ("cancelled".equals(status) || "expired".equals(status)) {
             subscription.setCancelledAt(now);
         }
-        return subscription;
+        subscription.setUpdatedAt(now);
     }
 
     private SubscriptionEntity newSubscription(UUID organizationId, PlanEntity plan, OffsetDateTime now) {
@@ -170,6 +153,7 @@ public class BillingService {
         return switch (plan.getBillingPeriod()) {
             case "yearly" -> start.plusYears(1);
             case "monthly" -> start.plusMonths(1);
+            case "one_time", "manual" -> null;
             default -> null;
         };
     }
@@ -177,6 +161,8 @@ public class BillingService {
     private void downgradeToFreePlanIfAvailable(UUID organizationId, String productCode) {
         if (planRepository.findByProductCodeAndPlanCodeAndActiveTrue(productCode, FREE_PLAN).isPresent()) {
             entitlementSyncService.syncFromPlan(organizationId, productCode, FREE_PLAN);
+        } else {
+            entitlementSyncService.disablePlanEntitlements(organizationId, productCode);
         }
     }
 

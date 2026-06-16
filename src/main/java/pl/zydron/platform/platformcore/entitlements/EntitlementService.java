@@ -71,6 +71,23 @@ public class EntitlementService {
         disablePlanEntitlementsNotInPlan(organizationId, productCode, planCode);
     }
 
+    @Transactional
+    public void disablePlanEntitlements(UUID organizationId, String productCode) {
+        jdbcTemplate.update(
+                """
+                update entitlement.organization_entitlements
+                set enabled = false,
+                    valid_until = now()
+                where organization_id = ?
+                  and product_code = ?
+                  and source = 'plan'
+                  and enabled
+                """,
+                organizationId,
+                productCode
+        );
+    }
+
     @Transactional(readOnly = true)
     public EntitlementLimit getEffectiveLimit(
             UUID organizationId,

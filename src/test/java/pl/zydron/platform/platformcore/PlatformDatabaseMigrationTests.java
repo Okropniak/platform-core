@@ -404,16 +404,17 @@ class PlatformDatabaseMigrationTests {
 
         billingService.cancelSubscription(organizationId, userId, "search_saas");
 
-        Boolean tokenEntitlementEnabled = jdbcTemplate.queryForObject(
+        Integer disabledTokenEntitlements = jdbcTemplate.queryForObject(
                 """
-                select enabled
+                select count(*)
                 from entitlement.organization_entitlements
                 where organization_id = ?
                   and product_code = 'search_saas'
                   and feature_code = 'ai_search_tokens'
                   and metric_code = 'ai_search_tokens'
+                  and enabled = false
                 """,
-                Boolean.class,
+                Integer.class,
                 organizationId
         );
         String subscriptionStatus = jdbcTemplate.queryForObject(
@@ -428,7 +429,7 @@ class PlatformDatabaseMigrationTests {
         );
 
         assertThat(proTokenLimit).isEqualTo("100000");
-        assertThat(tokenEntitlementEnabled).isFalse();
+        assertThat(disabledTokenEntitlements).isEqualTo(1);
         assertThat(subscriptionStatus).isEqualTo("cancelled");
     }
 
