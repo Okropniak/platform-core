@@ -183,6 +183,41 @@ class BillingServiceTests {
     }
 
     @Test
+    void subscriptionChangePreservesExistingProvider() {
+        UUID organizationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        PlanEntity plan = searchPlan("pro");
+        SubscriptionEntity existing = SubscriptionEntity.builder()
+                .id(UUID.randomUUID())
+                .organizationId(organizationId)
+                .productCode("search_saas")
+                .planCode("pro")
+                .status("trial")
+                .provider("stripe")
+                .createdAt(OffsetDateTime.now())
+                .updatedAt(OffsetDateTime.now())
+                .build();
+
+        when(planRepository.findByProductCodeAndPlanCodeAndActiveTrue("search_saas", "pro"))
+                .thenReturn(Optional.of(plan));
+        when(subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, "search_saas"))
+                .thenReturn(Optional.of(existing));
+        when(subscriptionRepository.save(any(SubscriptionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        SubscriptionEntity changed = billingService.onSubscriptionChanged(
+                organizationId,
+                userId,
+                "search_saas",
+                "pro",
+                "active"
+        );
+
+        assertThat(changed.getProvider()).isEqualTo("stripe");
+        verify(entitlementSyncService).syncFromPlan(organizationId, "search_saas", "pro");
+    }
+
+    @Test
     void rejectsUnknownPlanBeforeWritingSubscription() {
         UUID organizationId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();

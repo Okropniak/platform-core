@@ -37,7 +37,7 @@ public class BillingService {
 
         SubscriptionEntity subscription = subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, productCode)
                 .orElseGet(() -> newSubscription(organizationId, plan, now));
-        applyStatus(subscription, plan, "active", now);
+        applyStatus(subscription, plan, "active", "manual", now);
 
         SubscriptionEntity saved = subscriptionRepository.save(subscription);
         entitlementSyncService.syncFromPlan(organizationId, productCode, planCode);
@@ -90,7 +90,7 @@ public class BillingService {
 
         SubscriptionEntity subscription = subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, productCode)
                 .orElseGet(() -> newSubscription(organizationId, plan, now));
-        applyStatus(subscription, plan, newStatus, now);
+        applyStatus(subscription, plan, newStatus, null, now);
 
         SubscriptionEntity saved = subscriptionRepository.save(subscription);
         if ("active".equals(newStatus) || "manual".equals(newStatus)) {
@@ -120,10 +120,18 @@ public class BillingService {
                 .orElseThrow(() -> new BadRequestException("Plan does not exist or is not active."));
     }
 
-    private void applyStatus(SubscriptionEntity subscription, PlanEntity plan, String status, OffsetDateTime now) {
+    private void applyStatus(
+            SubscriptionEntity subscription,
+            PlanEntity plan,
+            String status,
+            String provider,
+            OffsetDateTime now
+    ) {
         subscription.setPlanCode(plan.getPlanCode());
         subscription.setStatus(status);
-        subscription.setProvider("manual");
+        if (provider != null || subscription.getProvider() == null) {
+            subscription.setProvider(provider == null ? "manual" : provider);
+        }
         if ("active".equals(status) || "manual".equals(status) || "trial".equals(status)) {
             subscription.setCurrentPeriodStart(now);
             subscription.setCurrentPeriodEnd(periodEnd(plan, now));

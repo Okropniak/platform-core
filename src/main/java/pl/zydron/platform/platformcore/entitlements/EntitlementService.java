@@ -21,6 +21,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class EntitlementService {
 
+    private static final String PLAN_SOURCE = "plan";
+
     private final OrganizationEntitlementRepository organizationEntitlementRepository;
     private final UserEntitlementRepository userEntitlementRepository;
     private final FeatureRepository featureRepository;
@@ -80,11 +82,12 @@ public class EntitlementService {
                     valid_until = now()
                 where organization_id = ?
                   and product_code = ?
-                  and source = 'plan'
+                  and source = ?
                   and enabled
                 """,
                 organizationId,
-                productCode
+                productCode,
+                PLAN_SOURCE
         );
     }
 
@@ -151,12 +154,12 @@ public class EntitlementService {
                     period,
                     source
                 )
-                values (?, ?, ?, ?, ?, ?, ?, 'plan')
+                values (?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict (organization_id, product_code, feature_code, metric_code) do update
                 set enabled = excluded.enabled,
                     limit_value = excluded.limit_value,
                     period = excluded.period,
-                    source = 'plan',
+                    source = excluded.source,
                     valid_from = now(),
                     valid_until = null
                 """,
@@ -166,7 +169,8 @@ public class EntitlementService {
                 metricCode,
                 enabled,
                 limitValue,
-                period
+                period,
+                PLAN_SOURCE
         );
     }
 
@@ -178,7 +182,7 @@ public class EntitlementService {
                     valid_until = now()
                 where oe.organization_id = ?
                   and oe.product_code = ?
-                  and oe.source = 'plan'
+                  and oe.source = ?
                   and not exists (
                       select 1
                       from billing.plan_entitlements pe
@@ -191,6 +195,7 @@ public class EntitlementService {
                 """,
                 organizationId,
                 productCode,
+                PLAN_SOURCE,
                 planCode
         );
     }
