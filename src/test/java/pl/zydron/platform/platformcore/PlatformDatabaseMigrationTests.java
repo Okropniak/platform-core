@@ -6,6 +6,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import pl.zydron.platform.platformcore.audit.AuditService;
+import pl.zydron.platform.platformcore.billing.BillingService;
 import pl.zydron.platform.platformcore.entitlements.EntitlementService;
 
 import java.util.Map;
@@ -26,6 +27,9 @@ class PlatformDatabaseMigrationTests {
 
     @Autowired
     AuditService auditService;
+
+    @Autowired
+    BillingService billingService;
 
     @Test
     void grantsAuthenticatedExecuteOnRlsHelper() {
@@ -334,6 +338,98 @@ class PlatformDatabaseMigrationTests {
         assertThat(orgIndexExists).isTrue();
         assertThat(productIndexExists).isTrue();
         assertThat(appendOnly).isTrue();
+    }
+
+    @Test
+    void seedsSearchSaasBillingPlansAndProtectsSubscriptionReadsWithRls() {
+        Integer plans = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from billing.plans
+                where product_code = 'search_saas'
+                  and plan_code in ('free', 'pro')
+                  and active
+                """,
+                Integer.class
+        );
+        Boolean subscriptionsRls = jdbcTemplate.queryForObject(
+                """
+                select relrowsecurity
+                from pg_class
+                where oid = 'billing.subscriptions'::regclass
+                """,
+                Boolean.class
+        );
+        Boolean authenticatedCanReadSubscriptions = jdbcTemplate.queryForObject(
+                "select has_table_privilege('authenticated', 'billing.subscriptions', 'select')",
+                Boolean.class
+        );
+
+        assertThat(plans).isEqualTo(2);
+        assertThat(subscriptionsRls).isTrue();
+        assertThat(authenticatedCanReadSubscriptions).isTrue();
+    }
+
+    @Test
+    void manualSubscriptionSyncsPlanEntitlementsAndCancellationDowngradesToFree() {
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = UUID.randomUUID();
+        jdbcTemplate.update("insert into auth.users (id) values (?)", userId);
+        jdbcTemplate.update(
+                "insert into platform.organizations (id, name, type, created_by) values (?, 'Billing Org', 'company', ?)",
+                organizationId,
+                userId
+        );
+        jdbcTemplate.update(
+                "insert into platform.organization_members (organization_id, user_id, role, status) values (?, ?, 'owner', 'active')",
+                organizationId,
+                userId
+        );
+
+        billingService.createManualSubscription(organizationId, userId, "search_saas", "pro");
+
+        String proTokenLimit = jdbcTemplate.queryForObject(
+                """
+                select limit_value::text
+                from entitlement.organization_entitlements
+                where organization_id = ?
+                  and product_code = 'search_saas'
+                  and feature_code = 'ai_search_tokens'
+                  and metric_code = 'ai_search_tokens'
+                  and enabled
+                """,
+                String.class,
+                organizationId
+        );
+
+        billingService.cancelSubscription(organizationId, userId, "search_saas");
+
+        Boolean tokenEntitlementEnabled = jdbcTemplate.queryForObject(
+                """
+                select enabled
+                from entitlement.organization_entitlements
+                where organization_id = ?
+                  and product_code = 'search_saas'
+                  and feature_code = 'ai_search_tokens'
+                  and metric_code = 'ai_search_tokens'
+                """,
+                Boolean.class,
+                organizationId
+        );
+        String subscriptionStatus = jdbcTemplate.queryForObject(
+                """
+                select status
+                from billing.subscriptions
+                where organization_id = ?
+                  and product_code = 'search_saas'
+                """,
+                String.class,
+                organizationId
+        );
+
+        assertThat(proTokenLimit).isEqualTo("100000");
+        assertThat(tokenEntitlementEnabled).isFalse();
+        assertThat(subscriptionStatus).isEqualTo("cancelled");
     }
 
     @Test
