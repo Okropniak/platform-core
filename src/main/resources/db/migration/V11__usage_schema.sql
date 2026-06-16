@@ -53,7 +53,7 @@ where counter_scope = 'user';
 create table usage.usage_reservations (
     id uuid primary key default gen_random_uuid(),
     organization_id uuid not null references platform.organizations(id) on delete cascade,
-    user_id uuid references auth.users(id) on delete cascade,
+    user_id uuid not null references auth.users(id) on delete cascade,
     product_code text not null references platform.products(code),
     metric_code text not null,
     reserved_amount numeric not null,
@@ -77,14 +77,7 @@ create table usage.usage_reservations (
         check (status in ('reserved', 'finalized', 'cancelled', 'expired')),
 
     constraint usage_reservations_scope_check
-        check (counter_scope in ('organization', 'user', 'organization_and_user')),
-
-    constraint usage_reservations_user_scope_check
-        check (
-            counter_scope = 'organization'
-            or
-            (counter_scope in ('user', 'organization_and_user') and user_id is not null)
-        )
+        check (counter_scope in ('organization', 'user', 'organization_and_user'))
 );
 
 create unique index usage_reservations_idempotency_unique

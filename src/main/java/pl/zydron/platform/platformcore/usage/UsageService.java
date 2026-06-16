@@ -73,7 +73,7 @@ public class UsageService {
 
     @Transactional
     public FinalizationResult finalizeUsage(UUID reservationId, UUID userId, BigDecimal actualAmount) {
-        usageReservationRepository.findByIdAndUserId(reservationId, userId)
+        usageReservationRepository.findById(reservationId)
                 .ifPresent(reservation -> tenantService.requireActiveMember(reservation.getOrganizationId(), userId));
 
         return readResult(jdbcTemplate.queryForObject(

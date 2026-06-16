@@ -391,6 +391,11 @@ class PlatformDatabaseMigrationTests {
                 organizationId,
                 userId
         );
+        String reservationOwner = jdbcTemplate.queryForObject(
+                "select user_id::text from usage.usage_reservations where id = ?::uuid and counter_scope = 'organization'",
+                String.class,
+                reservationId
+        );
         Boolean finalized = jdbcTemplate.queryForObject(
                 "select (usage.finalize_usage(?::uuid, ?, 5)->>'finalized')::boolean",
                 Boolean.class,
@@ -422,6 +427,7 @@ class PlatformDatabaseMigrationTests {
                 organizationId
         );
 
+        assertThat(reservationOwner).isEqualTo(userId.toString());
         assertThat(finalized).isTrue();
         assertThat(used).isEqualTo("5");
         assertThat(reserved).isEqualTo("0");
@@ -504,6 +510,41 @@ class PlatformDatabaseMigrationTests {
         );
 
         assertThat(reason).isEqualTo("actual_exceeds_reservation");
+    }
+
+    @Test
+    void finalizeUsageReportsMissingCounterAsReservationInconsistency() {
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = createUsageFixture(userId, "Missing Counter Org", "ai_search_tokens", "ai_search_tokens", "10");
+        addUserEntitlement(organizationId, userId, "ai_search_tokens", "ai_search_tokens", "10");
+
+        String reservationId = jdbcTemplate.queryForObject(
+                "select usage.reserve_usage(?, ?, 'search_saas', 'ai_search_tokens', 7, 'search_saas:reserve:missing-counter')->>'reservationId'",
+                String.class,
+                organizationId,
+                userId
+        );
+        jdbcTemplate.update(
+                """
+                delete from usage.usage_counters
+                where organization_id = ?
+                  and user_id = ?
+                  and product_code = 'search_saas'
+                  and metric_code = 'ai_search_tokens'
+                  and counter_scope = 'user'
+                """,
+                organizationId,
+                userId
+        );
+
+        String reason = jdbcTemplate.queryForObject(
+                "select usage.finalize_usage(?::uuid, ?, 5)->>'reason'",
+                String.class,
+                reservationId,
+                userId
+        );
+
+        assertThat(reason).isEqualTo("reservation_counter_missing");
     }
 
     @Test

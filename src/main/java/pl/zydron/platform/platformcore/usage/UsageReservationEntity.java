@@ -29,6 +29,7 @@ public class UsageReservationEntity {
     @Column(nullable = false)
     private UUID organizationId;
 
+    @Column(nullable = false)
     private UUID userId;
 
     @Column(nullable = false)

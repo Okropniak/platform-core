@@ -23,8 +23,6 @@ create or replace function usage.period_bounds_at(p_period text, p_at timestampt
 returns table(period_start timestamptz, period_end timestamptz)
 language sql
 stable
-security definer
-set search_path = usage, pg_temp
 as $$
     select case p_period
                when 'daily' then date_trunc('day', p_at)
@@ -566,7 +564,7 @@ begin
     for update;
 
     if not found then
-        return jsonb_build_object('finalized', false, 'reason', 'limit_exceeded');
+        return jsonb_build_object('finalized', false, 'reason', 'reservation_counter_missing');
     end if;
 
     if v_org_limit is not null and v_org_counter.used_value + v_org_counter.reserved_value - r.reserved_amount + p_actual_amount > v_org_limit then
@@ -605,7 +603,7 @@ begin
         for update;
 
         if not found then
-            return jsonb_build_object('finalized', false, 'reason', 'limit_exceeded');
+            return jsonb_build_object('finalized', false, 'reason', 'reservation_counter_missing');
         end if;
 
         if v_user_limit is not null and v_user_counter.used_value + v_user_counter.reserved_value - r.reserved_amount + p_actual_amount > v_user_limit then
