@@ -35,7 +35,7 @@ public class AdminEntitlementService {
         if (!organizationRepository.existsById(organizationId)) {
             throw new BadRequestException("Organization does not exist.");
         }
-        String effectiveSource = source == null || source.isBlank() ? "manual" : source;
+        String effectiveSource = source == null || source.isBlank() ? "admin_override" : source;
         EntitlementOverrideResult result = jdbcTemplate.queryForObject(
                 """
                 insert into entitlement.organization_entitlements (

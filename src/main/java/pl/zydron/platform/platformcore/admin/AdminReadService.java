@@ -165,7 +165,8 @@ public class AdminReadService {
                        event_type,
                        entity_type,
                        entity_id,
-                       created_at
+                       created_at,
+                       metadata::text as metadata
                 from audit.audit_events
                 """ + where + " order by created_at desc, id desc limit ? offset ?",
                 (rs, rowNum) -> new AuditRow(
@@ -176,7 +177,8 @@ public class AdminReadService {
                         rs.getString("event_type"),
                         rs.getString("entity_type"),
                         rs.getString("entity_id"),
-                        rs.getObject("created_at", OffsetDateTime.class)
+                        rs.getObject("created_at", OffsetDateTime.class),
+                        rs.getString("metadata")
                 ),
                 pageArgs.toArray()
         );
@@ -263,7 +265,8 @@ public class AdminReadService {
             String eventType,
             String entityType,
             String entityId,
-            OffsetDateTime createdAt
+            OffsetDateTime createdAt,
+            String metadata
     ) {
     }
 }

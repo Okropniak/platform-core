@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.common.BadRequestException;
+import pl.zydron.platform.platformcore.tenants.OrganizationRepository;
 import pl.zydron.platform.platformcore.tenants.TenantService;
 
 import java.time.OffsetDateTime;
@@ -20,6 +21,7 @@ public class BillingService {
 
     private final PlanRepository planRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final OrganizationRepository organizationRepository;
     private final TenantService tenantService;
     private final EntitlementSyncService entitlementSyncService;
     private final AuditService auditService;
@@ -32,6 +34,39 @@ public class BillingService {
             String planCode
     ) {
         tenantService.requireManager(organizationId, requestingUserId);
+        return activateManualSubscription(
+                organizationId,
+                requestingUserId,
+                productCode,
+                planCode,
+                "subscription_created"
+        );
+    }
+
+    @Transactional
+    public SubscriptionEntity createManualSubscriptionAsAdmin(
+            UUID organizationId,
+            UUID adminUserId,
+            String productCode,
+            String planCode
+    ) {
+        requireOrganization(organizationId);
+        return activateManualSubscription(
+                organizationId,
+                adminUserId,
+                productCode,
+                planCode,
+                "admin_subscription_created"
+        );
+    }
+
+    private SubscriptionEntity activateManualSubscription(
+            UUID organizationId,
+            UUID userId,
+            String productCode,
+            String planCode,
+            String eventType
+    ) {
         PlanEntity plan = requireActivePlan(productCode, planCode);
         OffsetDateTime now = OffsetDateTime.now();
 
@@ -43,10 +78,10 @@ public class BillingService {
         entitlementSyncService.syncFromPlan(organizationId, productCode, planCode);
         auditSubscriptionChanged(
                 organizationId,
-                requestingUserId,
+                userId,
                 productCode,
                 saved,
-                "subscription_created",
+                eventType,
                 Map.of("planCode", planCode, "status", saved.getStatus(), "provider", saved.getProvider())
         );
         return saved;
@@ -85,6 +120,43 @@ public class BillingService {
             String newStatus
     ) {
         tenantService.requireManager(organizationId, requestingUserId);
+        return changeSubscription(
+                organizationId,
+                requestingUserId,
+                productCode,
+                planCode,
+                newStatus,
+                "subscription_changed"
+        );
+    }
+
+    @Transactional
+    public SubscriptionEntity changeSubscriptionAsAdmin(
+            UUID organizationId,
+            UUID adminUserId,
+            String productCode,
+            String planCode,
+            String newStatus
+    ) {
+        requireOrganization(organizationId);
+        return changeSubscription(
+                organizationId,
+                adminUserId,
+                productCode,
+                planCode,
+                newStatus,
+                "admin_subscription_changed"
+        );
+    }
+
+    private SubscriptionEntity changeSubscription(
+            UUID organizationId,
+            UUID userId,
+            String productCode,
+            String planCode,
+            String newStatus,
+            String eventType
+    ) {
         PlanEntity plan = requireActivePlan(productCode, planCode);
         OffsetDateTime now = OffsetDateTime.now();
 
@@ -100,10 +172,10 @@ public class BillingService {
         }
         auditSubscriptionChanged(
                 organizationId,
-                requestingUserId,
+                userId,
                 productCode,
                 saved,
-                "subscription_changed",
+                eventType,
                 Map.of("planCode", planCode, "status", saved.getStatus(), "provider", saved.getProvider())
         );
         return saved;
@@ -118,6 +190,12 @@ public class BillingService {
     private PlanEntity requireActivePlan(String productCode, String planCode) {
         return planRepository.findByProductCodeAndPlanCodeAndActiveTrue(productCode, planCode)
                 .orElseThrow(() -> new BadRequestException("Plan does not exist or is not active."));
+    }
+
+    private void requireOrganization(UUID organizationId) {
+        if (!organizationRepository.existsById(organizationId)) {
+            throw new BadRequestException("Organization does not exist.");
+        }
     }
 
     private void applyStatus(

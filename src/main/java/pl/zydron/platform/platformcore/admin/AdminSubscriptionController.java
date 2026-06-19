@@ -13,9 +13,11 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import pl.zydron.platform.platformcore.billing.BillingService;
 import pl.zydron.platform.platformcore.billing.SubscriptionEntity;
 import pl.zydron.platform.platformcore.common.JwtUser;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @RestController
@@ -24,36 +26,36 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminSubscriptionController {
 
-    private final AdminBillingService adminBillingService;
+    private final BillingService billingService;
 
     @PostMapping
-    SubscriptionEntity createManualSubscription(
+    SubscriptionResponse createManualSubscription(
             @PathVariable UUID id,
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateSubscriptionRequest request
     ) {
-        return adminBillingService.activateManualSubscription(
+        return SubscriptionResponse.from(billingService.createManualSubscriptionAsAdmin(
                 id,
                 JwtUser.userId(jwt),
                 request.productCode(),
                 request.planCode()
-        );
+        ));
     }
 
     @PutMapping("/{productCode}")
-    SubscriptionEntity changeSubscription(
+    SubscriptionResponse changeSubscription(
             @PathVariable UUID id,
             @PathVariable String productCode,
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody ChangeSubscriptionRequest request
     ) {
-        return adminBillingService.changeSubscription(
+        return SubscriptionResponse.from(billingService.changeSubscriptionAsAdmin(
                 id,
                 JwtUser.userId(jwt),
                 productCode,
                 request.planCode(),
                 request.status()
-        );
+        ));
     }
 
     public record CreateSubscriptionRequest(
@@ -67,5 +69,31 @@ public class AdminSubscriptionController {
             @NotBlank
             @Pattern(regexp = "trial|active|past_due|cancelled|expired|manual") String status
     ) {
+    }
+
+    public record SubscriptionResponse(
+            UUID id,
+            UUID organizationId,
+            String productCode,
+            String planCode,
+            String status,
+            String provider,
+            OffsetDateTime currentPeriodStart,
+            OffsetDateTime currentPeriodEnd,
+            OffsetDateTime cancelledAt
+    ) {
+        static SubscriptionResponse from(SubscriptionEntity subscription) {
+            return new SubscriptionResponse(
+                    subscription.getId(),
+                    subscription.getOrganizationId(),
+                    subscription.getProductCode(),
+                    subscription.getPlanCode(),
+                    subscription.getStatus(),
+                    subscription.getProvider(),
+                    subscription.getCurrentPeriodStart(),
+                    subscription.getCurrentPeriodEnd(),
+                    subscription.getCancelledAt()
+            );
+        }
     }
 }

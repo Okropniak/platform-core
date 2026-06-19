@@ -51,7 +51,7 @@ public class AdminEntitlementController {
             boolean enabled,
             BigDecimal limitValue,
             @Pattern(regexp = "daily|monthly|yearly|lifetime") String period,
-            @Pattern(regexp = "manual|promo|enterprise") String source
+            @Pattern(regexp = "manual|promo|enterprise|admin_override") String source
     ) {
     }
 }

@@ -3,6 +3,7 @@ package pl.zydron.platform.platformcore.billing;
 import org.junit.jupiter.api.Test;
 import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.common.BadRequestException;
+import pl.zydron.platform.platformcore.tenants.OrganizationRepository;
 import pl.zydron.platform.platformcore.tenants.TenantService;
 
 import java.math.BigDecimal;
@@ -22,12 +23,14 @@ class BillingServiceTests {
 
     private final PlanRepository planRepository = mock(PlanRepository.class);
     private final SubscriptionRepository subscriptionRepository = mock(SubscriptionRepository.class);
+    private final OrganizationRepository organizationRepository = mock(OrganizationRepository.class);
     private final TenantService tenantService = mock(TenantService.class);
     private final EntitlementSyncService entitlementSyncService = mock(EntitlementSyncService.class);
     private final AuditService auditService = mock(AuditService.class);
     private final BillingService billingService = new BillingService(
             planRepository,
             subscriptionRepository,
+            organizationRepository,
             tenantService,
             entitlementSyncService,
             auditService
@@ -215,6 +218,89 @@ class BillingServiceTests {
 
         assertThat(changed.getProvider()).isEqualTo("stripe");
         verify(entitlementSyncService).syncFromPlan(organizationId, "search_saas", "pro");
+    }
+
+    @Test
+    void adminCanActivateManualSubscriptionWithoutOrgManagerCheck() {
+        UUID organizationId = UUID.randomUUID();
+        UUID adminUserId = UUID.randomUUID();
+        PlanEntity plan = searchPlan("pro");
+
+        when(organizationRepository.existsById(organizationId)).thenReturn(true);
+        when(planRepository.findByProductCodeAndPlanCodeAndActiveTrue("search_saas", "pro"))
+                .thenReturn(Optional.of(plan));
+        when(subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, "search_saas"))
+                .thenReturn(Optional.empty());
+        when(subscriptionRepository.save(any(SubscriptionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        SubscriptionEntity subscription = billingService.createManualSubscriptionAsAdmin(
+                organizationId,
+                adminUserId,
+                "search_saas",
+                "pro"
+        );
+
+        assertThat(subscription.getStatus()).isEqualTo("active");
+        assertThat(subscription.getProvider()).isEqualTo("manual");
+        verify(tenantService, never()).requireManager(organizationId, adminUserId);
+        verify(entitlementSyncService).syncFromPlan(organizationId, "search_saas", "pro");
+    }
+
+    @Test
+    void adminStatusChangePreservesExistingProvider() {
+        UUID organizationId = UUID.randomUUID();
+        UUID adminUserId = UUID.randomUUID();
+        PlanEntity plan = searchPlan("pro");
+        SubscriptionEntity existing = SubscriptionEntity.builder()
+                .id(UUID.randomUUID())
+                .organizationId(organizationId)
+                .productCode("search_saas")
+                .planCode("pro")
+                .status("trial")
+                .provider("stripe")
+                .createdAt(OffsetDateTime.now())
+                .updatedAt(OffsetDateTime.now())
+                .build();
+
+        when(organizationRepository.existsById(organizationId)).thenReturn(true);
+        when(planRepository.findByProductCodeAndPlanCodeAndActiveTrue("search_saas", "pro"))
+                .thenReturn(Optional.of(plan));
+        when(subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, "search_saas"))
+                .thenReturn(Optional.of(existing));
+        when(subscriptionRepository.save(any(SubscriptionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        SubscriptionEntity changed = billingService.changeSubscriptionAsAdmin(
+                organizationId,
+                adminUserId,
+                "search_saas",
+                "pro",
+                "active"
+        );
+
+        assertThat(changed.getProvider()).isEqualTo("stripe");
+        verify(tenantService, never()).requireManager(organizationId, adminUserId);
+        verify(entitlementSyncService).syncFromPlan(organizationId, "search_saas", "pro");
+    }
+
+    @Test
+    void adminChangeRejectsUnknownOrganizationBeforeWritingSubscription() {
+        UUID organizationId = UUID.randomUUID();
+        UUID adminUserId = UUID.randomUUID();
+
+        when(organizationRepository.existsById(organizationId)).thenReturn(false);
+
+        assertThatThrownBy(() -> billingService.changeSubscriptionAsAdmin(
+                organizationId,
+                adminUserId,
+                "search_saas",
+                "pro",
+                "active"
+        )).isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Organization does not exist");
+
+        verify(subscriptionRepository, never()).save(any());
     }
 
     @Test
