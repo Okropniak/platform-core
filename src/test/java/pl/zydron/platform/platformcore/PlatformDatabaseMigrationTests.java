@@ -8,7 +8,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.billing.BillingService;
 import pl.zydron.platform.platformcore.entitlements.EntitlementService;
+import pl.zydron.platform.platformcore.products.ProductService;
+import pl.zydron.platform.platformcore.tenants.TenantService;
+import pl.zydron.platform.platformcore.usage.UsageService;
 
+import java.math.BigDecimal;
 import java.util.Map;
 import java.util.UUID;
 
@@ -30,6 +34,15 @@ class PlatformDatabaseMigrationTests {
 
     @Autowired
     BillingService billingService;
+
+    @Autowired
+    TenantService tenantService;
+
+    @Autowired
+    ProductService productService;
+
+    @Autowired
+    UsageService usageService;
 
     @Test
     void grantsAuthenticatedExecuteOnRlsHelper() {
@@ -434,6 +447,100 @@ class PlatformDatabaseMigrationTests {
     }
 
     @Test
+    void searchSaasSchemaHasRlsAndExpectedPrivileges() {
+        Boolean tableExists = jdbcTemplate.queryForObject(
+                "select to_regclass('search_saas.search_queries') is not null",
+                Boolean.class
+        );
+        Boolean rlsEnabled = jdbcTemplate.queryForObject(
+                """
+                select relrowsecurity
+                from pg_class
+                where oid = 'search_saas.search_queries'::regclass
+                """,
+                Boolean.class
+        );
+        Boolean authenticatedCanInsert = jdbcTemplate.queryForObject(
+                "select has_table_privilege('authenticated', 'search_saas.search_queries', 'select,insert')",
+                Boolean.class
+        );
+        Boolean backendCanWrite = jdbcTemplate.queryForObject(
+                """
+                select has_table_privilege('search_saas_backend_role', 'search_saas.search_queries', 'select,insert,update,delete')
+                """,
+                Boolean.class
+        );
+
+        assertThat(tableExists).isTrue();
+        assertThat(rlsEnabled).isTrue();
+        assertThat(authenticatedCanInsert).isTrue();
+        assertThat(backendCanWrite).isTrue();
+    }
+
+    @Test
+    void searchSaasContractWorksEndToEnd() throws InterruptedException {
+        UUID userId = UUID.randomUUID();
+        jdbcTemplate.update("insert into auth.users (id) values (?)", userId);
+
+        var organization = tenantService.createOrganization(userId, "Search SaaS Contract Org", "company");
+        UUID organizationId = organization.getId();
+
+        productService.registerUserToProduct(
+                organizationId,
+                userId,
+                "search_saas",
+                "2026-06",
+                "2026-06"
+        );
+        productService.grantAccess(organizationId, userId, userId, "search_saas", "user");
+        billingService.createManualSubscription(organizationId, userId, "search_saas", "pro");
+
+        var entitlements = entitlementService.getEntitlements(organizationId, userId, "search_saas");
+        assertThat(entitlements.entitlements()).containsKeys("basic_search", "ai_search_per_use", "ai_search_tokens");
+
+        insertSearchQueryAsAuthenticatedUser(organizationId, userId, "basic contract query", "basic");
+        Integer visibleQueries = countSearchQueriesAsAuthenticatedUser(organizationId, userId);
+        assertThat(visibleQueries).isEqualTo(1);
+
+        var firstUsage = usageService.consumeUsage(
+                organizationId,
+                userId,
+                "search_saas",
+                "ai_search_usage",
+                BigDecimal.valueOf(1000),
+                "search_saas:consume:e2e-1"
+        );
+        var overLimitUsage = usageService.consumeUsage(
+                organizationId,
+                userId,
+                "search_saas",
+                "ai_search_usage",
+                BigDecimal.ONE,
+                "search_saas:consume:e2e-2"
+        );
+
+        assertThat(firstUsage.accepted()).isTrue();
+        assertThat(overLimitUsage.accepted()).isFalse();
+        assertThat(overLimitUsage.reason()).isEqualTo("limit_exceeded");
+
+        var reservation = usageService.reserveUsage(
+                organizationId,
+                userId,
+                "search_saas",
+                "ai_search_tokens",
+                BigDecimal.valueOf(7),
+                "search_saas:reserve:e2e-1"
+        );
+        var finalization = usageService.finalizeUsage(reservation.reservationId(), userId, BigDecimal.valueOf(5));
+
+        assertThat(reservation.accepted()).isTrue();
+        assertThat(finalization.finalized()).isTrue();
+
+        Integer limitAuditEvents = awaitAuditEventCount(organizationId, "usage_limit_exceeded");
+        assertThat(limitAuditEvents).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
     void consumeUsageIsIdempotentAndEnforcesLimit() {
         UUID userId = UUID.randomUUID();
         UUID organizationId = createUsageFixture(userId, "Consume Org", "ai_search_usage", "ai_search_per_use", "3");
@@ -771,6 +878,56 @@ class PlatformDatabaseMigrationTests {
         );
     }
 
+    private void insertSearchQueryAsAuthenticatedUser(
+            UUID organizationId,
+            UUID userId,
+            String query,
+            String searchType
+    ) {
+        runAsAuthenticatedUser(userId, () -> jdbcTemplate.update(
+                """
+                insert into search_saas.search_queries (organization_id, user_id, query, search_type)
+                values (?, ?, ?, ?)
+                """,
+                organizationId,
+                userId,
+                query,
+                searchType
+        ));
+    }
+
+    private Integer countSearchQueriesAsAuthenticatedUser(UUID organizationId, UUID userId) {
+        final Integer[] count = new Integer[1];
+        runAsAuthenticatedUser(userId, () -> count[0] = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from search_saas.search_queries
+                where organization_id = ?
+                """,
+                Integer.class,
+                organizationId
+        ));
+        return count[0];
+    }
+
+    private void runAsAuthenticatedUser(UUID userId, Runnable operation) {
+        try {
+            jdbcTemplate.execute("set role authenticated");
+            jdbcTemplate.queryForObject(
+                    "select set_config('request.jwt.claim.sub', ?, false)",
+                    String.class,
+                    userId.toString()
+            );
+            operation.run();
+        } finally {
+            jdbcTemplate.queryForObject(
+                    "select set_config('request.jwt.claim.sub', '', false)",
+                    String.class
+            );
+            jdbcTemplate.execute("reset role");
+        }
+    }
+
     private String awaitAuditStatus(UUID organizationId) throws InterruptedException {
         for (int attempt = 0; attempt < 20; attempt++) {
             String status = jdbcTemplate.queryForObject(
@@ -789,5 +946,26 @@ class PlatformDatabaseMigrationTests {
             Thread.sleep(50);
         }
         return null;
+    }
+
+    private Integer awaitAuditEventCount(UUID organizationId, String eventType) throws InterruptedException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            Integer count = jdbcTemplate.queryForObject(
+                    """
+                    select count(*)
+                    from audit.audit_events
+                    where organization_id = ?
+                      and event_type = ?
+                    """,
+                    Integer.class,
+                    organizationId,
+                    eventType
+            );
+            if (count != null && count > 0) {
+                return count;
+            }
+            Thread.sleep(50);
+        }
+        return 0;
     }
 }
