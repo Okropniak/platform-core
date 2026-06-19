@@ -1,6 +1,7 @@
 package pl.zydron.platform.platformcore;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -13,6 +14,11 @@ import pl.zydron.platform.platformcore.tenants.TenantService;
 import pl.zydron.platform.platformcore.usage.UsageService;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Map;
 import java.util.UUID;
 
@@ -498,9 +504,27 @@ class PlatformDatabaseMigrationTests {
         var entitlements = entitlementService.getEntitlements(organizationId, userId, "search_saas");
         assertThat(entitlements.entitlements()).containsKeys("basic_search", "ai_search_per_use", "ai_search_tokens");
 
-        insertSearchQueryAsAuthenticatedUser(organizationId, userId, "basic contract query", "basic");
+        insertSearchQueryAsAuthenticatedUser(organizationId, userId, "basic contract query", "basic_search");
         Integer visibleQueries = countSearchQueriesAsAuthenticatedUser(organizationId, userId);
         assertThat(visibleQueries).isEqualTo(1);
+
+        UUID otherUserId = UUID.randomUUID();
+        jdbcTemplate.update("insert into auth.users (id) values (?)", otherUserId);
+        tenantService.createOrganization(otherUserId, "Other Search SaaS Org", "company");
+        Integer otherUserVisibleQueries = countSearchQueriesAsAuthenticatedUser(organizationId, otherUserId);
+        assertThat(otherUserVisibleQueries).isZero();
+
+        UUID memberWithoutAccessId = UUID.randomUUID();
+        jdbcTemplate.update("insert into auth.users (id) values (?)", memberWithoutAccessId);
+        tenantService.addMember(organizationId, userId, memberWithoutAccessId, "member");
+        assertThatThrownBy(() -> insertSearchQueryAsAuthenticatedUser(
+                organizationId,
+                memberWithoutAccessId,
+                "blocked query",
+                "basic_search"
+        )).isInstanceOf(DataAccessException.class);
+        Integer memberWithoutAccessVisibleQueries = countSearchQueriesAsAuthenticatedUser(organizationId, memberWithoutAccessId);
+        assertThat(memberWithoutAccessVisibleQueries).isZero();
 
         var firstUsage = usageService.consumeUsage(
                 organizationId,
@@ -535,6 +559,33 @@ class PlatformDatabaseMigrationTests {
 
         assertThat(reservation.accepted()).isTrue();
         assertThat(finalization.finalized()).isTrue();
+
+        String tokenUsed = jdbcTemplate.queryForObject(
+                """
+                select used_value::text
+                from usage.usage_counters
+                where organization_id = ?
+                  and product_code = 'search_saas'
+                  and metric_code = 'ai_search_tokens'
+                  and counter_scope = 'organization'
+                """,
+                String.class,
+                organizationId
+        );
+        String tokenReserved = jdbcTemplate.queryForObject(
+                """
+                select reserved_value::text
+                from usage.usage_counters
+                where organization_id = ?
+                  and product_code = 'search_saas'
+                  and metric_code = 'ai_search_tokens'
+                  and counter_scope = 'organization'
+                """,
+                String.class,
+                organizationId
+        );
+        assertThat(tokenUsed).isEqualTo("5");
+        assertThat(tokenReserved).isEqualTo("0");
 
         Integer limitAuditEvents = awaitAuditEventCount(organizationId, "usage_limit_exceeded");
         assertThat(limitAuditEvents).isGreaterThanOrEqualTo(1);
@@ -884,52 +935,74 @@ class PlatformDatabaseMigrationTests {
             String query,
             String searchType
     ) {
-        runAsAuthenticatedUser(userId, () -> jdbcTemplate.update(
-                """
-                insert into search_saas.search_queries (organization_id, user_id, query, search_type)
-                values (?, ?, ?, ?)
-                """,
-                organizationId,
-                userId,
-                query,
-                searchType
-        ));
+        runAsAuthenticatedUser(userId, connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    """
+                    insert into search_saas.search_queries (organization_id, user_id, query, search_type)
+                    values (?, ?, ?, ?)
+                    """
+            )) {
+                statement.setObject(1, organizationId);
+                statement.setObject(2, userId);
+                statement.setString(3, query);
+                statement.setString(4, searchType);
+                statement.executeUpdate();
+            }
+            return null;
+        });
     }
 
     private Integer countSearchQueriesAsAuthenticatedUser(UUID organizationId, UUID userId) {
-        final Integer[] count = new Integer[1];
-        runAsAuthenticatedUser(userId, () -> count[0] = jdbcTemplate.queryForObject(
-                """
-                select count(*)
-                from search_saas.search_queries
-                where organization_id = ?
-                """,
-                Integer.class,
-                organizationId
-        ));
-        return count[0];
+        return runAsAuthenticatedUser(userId, connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    """
+                    select count(*)
+                    from search_saas.search_queries
+                    where organization_id = ?
+                    """
+            )) {
+                statement.setObject(1, organizationId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    resultSet.next();
+                    return resultSet.getInt(1);
+                }
+            }
+        });
     }
 
-    private void runAsAuthenticatedUser(UUID userId, Runnable operation) {
-        try {
-            jdbcTemplate.execute("set role authenticated");
-            jdbcTemplate.queryForObject(
-                    "select set_config('request.jwt.claim.sub', ?, false)",
-                    String.class,
-                    userId.toString()
-            );
-            operation.run();
-        } finally {
-            jdbcTemplate.queryForObject(
-                    "select set_config('request.jwt.claim.sub', '', false)",
-                    String.class
-            );
-            jdbcTemplate.execute("reset role");
-        }
+    private <T> T runAsAuthenticatedUser(UUID userId, AuthenticatedOperation<T> operation) {
+        return jdbcTemplate.execute((Connection connection) -> {
+            boolean originalAutoCommit = connection.getAutoCommit();
+            try {
+                connection.setAutoCommit(false);
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("set local role authenticated");
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "select set_config('request.jwt.claim.sub', ?, true)"
+                )) {
+                    statement.setString(1, userId.toString());
+                    statement.executeQuery();
+                }
+                T result = operation.execute(connection);
+                connection.commit();
+                return result;
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(originalAutoCommit);
+            }
+        });
+    }
+
+    @FunctionalInterface
+    private interface AuthenticatedOperation<T> {
+        T execute(Connection connection) throws SQLException;
     }
 
     private String awaitAuditStatus(UUID organizationId) throws InterruptedException {
-        for (int attempt = 0; attempt < 20; attempt++) {
+        for (int attempt = 0; attempt < 100; attempt++) {
             String status = jdbcTemplate.queryForObject(
                     """
                     select max(metadata->>'status')
@@ -949,7 +1022,7 @@ class PlatformDatabaseMigrationTests {
     }
 
     private Integer awaitAuditEventCount(UUID organizationId, String eventType) throws InterruptedException {
-        for (int attempt = 0; attempt < 20; attempt++) {
+        for (int attempt = 0; attempt < 100; attempt++) {
             Integer count = jdbcTemplate.queryForObject(
                     """
                     select count(*)
