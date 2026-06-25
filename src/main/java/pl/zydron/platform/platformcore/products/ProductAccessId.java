@@ -13,6 +13,13 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Embeddable
+/**
+ * Złożony klucz rekordu dostępu do produktu.
+ *
+ * <p>Dostęp jest jednoznacznie określony przez organizację, użytkownika
+ * i produkt. {@code @Embeddable} pozwala użyć tych trzech pól jako jednego
+ * identyfikatora encji JPA.</p>
+ */
 public class ProductAccessId implements Serializable {
 
     private static final long serialVersionUID = 1L;

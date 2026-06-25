@@ -15,16 +15,25 @@ import java.util.UUID;
 @RequestMapping("/admin/organizations")
 @PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
+/**
+ * Udostępnia administratorowi listę i szczegóły wszystkich organizacji.
+ */
 public class AdminOrganizationController {
 
     private final AdminReadService adminReadService;
 
     @GetMapping
+    /**
+     * Zwraca stronę organizacji zgodnie z parametrami Spring Data Pageable.
+     */
     Page<AdminReadService.OrganizationSummary> organizations(Pageable pageable) {
         return adminReadService.organizations(pageable);
     }
 
     @GetMapping("/{id}")
+    /**
+     * Zwraca organizację wraz z liczbą członków, subskrypcjami i entitlementami.
+     */
     AdminReadService.OrganizationDetail organization(@PathVariable UUID id) {
         return adminReadService.organizationDetail(id);
     }

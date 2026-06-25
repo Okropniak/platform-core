@@ -25,12 +25,22 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/organizations")
+/**
+ * Udostępnia HTTP API do zarządzania organizacjami i członkostwami.
+ *
+ * <p>Kontroler odpowiada za walidację JSON i odczyt użytkownika z JWT.
+ * Reguły biznesowe oraz sprawdzanie roli owner/admin pozostają w
+ * {@link TenantService}.</p>
+ */
 public class TenantController {
 
     private final TenantService tenantService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    /**
+     * Tworzy organizację, a zalogowanego użytkownika zapisuje jako właściciela.
+     */
     OrganizationResponse createOrganization(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateOrganizationRequest request
@@ -39,6 +49,9 @@ public class TenantController {
     }
 
     @GetMapping
+    /**
+     * Zwraca organizacje, w których użytkownik ma aktywne członkostwo.
+     */
     List<OrganizationResponse> getOrganizations(@AuthenticationPrincipal Jwt jwt) {
         return tenantService.getOrganizationsForUser(JwtUser.userId(jwt)).stream()
                 .map(OrganizationResponse::from)
@@ -47,6 +60,10 @@ public class TenantController {
 
     @PostMapping("/{id}/members")
     @ResponseStatus(HttpStatus.CREATED)
+    /**
+     * Dodaje użytkownika do organizacji. Wywołujący musi być jej właścicielem
+     * albo administratorem.
+     */
     MemberResponse addMember(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID id,

@@ -17,6 +17,13 @@ import java.time.OffsetDateTime;
 @AllArgsConstructor
 @Entity
 @Table(schema = "platform", name = "organization_members")
+/**
+ * Encja łącząca użytkownika z organizacją.
+ *
+ * <p>{@link EmbeddedId} przechowuje oba identyfikatory klucza. Rola określa
+ * zakres uprawnień, a status pozwala wyłączyć członkostwo bez usuwania jego
+ * historii.</p>
+ */
 public class OrganizationMemberEntity {
 
     @EmbeddedId

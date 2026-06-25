@@ -17,6 +17,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Zarządza prawami do funkcji produktu oraz wynikającymi z planów limitami.
+ *
+ * <p>Serwis łączy dane organizacji i użytkownika. Limit użytkownika może
+ * wyłącznie zawęzić limit organizacji, nigdy go rozszerzyć.</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class EntitlementService {
@@ -32,6 +38,12 @@ public class EntitlementService {
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
+    /**
+     * Pobiera zbiorczy widok entitlementów z funkcji PostgreSQL.
+     *
+     * <p>Najpierw sprawdzane jest członkostwo. JSON zwrócony przez bazę jest
+     * następnie zamieniany na typowany kontrakt odpowiedzi.</p>
+     */
     public EntitlementsResponse getEntitlements(UUID organizationId, UUID requestingUserId, String productCode) {
         tenantService.requireActiveMember(organizationId, requestingUserId);
 
@@ -50,11 +62,20 @@ public class EntitlementService {
             );
             return new EntitlementsResponse(organizationId, productCode, entitlements);
         } catch (JacksonException exception) {
+            // Ten wyjątek oznacza niespójność kontraktu SQL-Java, a nie
+            // niepoprawne dane przesłane przez klienta.
             throw new IllegalStateException("Invalid entitlements result returned by database.", exception);
         }
     }
 
     @Transactional
+    /**
+     * Synchronizuje prawa organizacji z aktywnym szablonem planu.
+     *
+     * <p>Najpierw wykonywane są upserty praw obecnych w planie. Dopiero potem
+     * stare prawa planowe, których nie ma w nowym szablonie, są wyłączane.
+     * Dzięki temu inne transakcje nie obserwują chwilowej pustej konfiguracji.</p>
+     */
     public void syncEntitlementsFromPlan(UUID organizationId, String productCode, String planCode) {
         var entitlements = planEntitlements(productCode, planCode);
 
@@ -74,6 +95,9 @@ public class EntitlementService {
     }
 
     @Transactional
+    /**
+     * Wyłącza aktywne prawa pochodzące z planu bez usuwania ręcznych override'ów.
+     */
     public void disablePlanEntitlements(UUID organizationId, String productCode) {
         jdbcTemplate.update(
                 """
@@ -92,6 +116,13 @@ public class EntitlementService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Oblicza skuteczny limit dla użytkownika.
+     *
+     * <p>Brak entitlementu organizacji oznacza brak dostępu. Jeżeli istnieje
+     * także entitlement użytkownika, oba muszą być włączone, a liczbowo
+     * obowiązuje mniejszy limit.</p>
+     */
     public EntitlementLimit getEffectiveLimit(
             UUID organizationId,
             UUID userId,
@@ -142,6 +173,8 @@ public class EntitlementService {
             requireMetric(productCode, metricCode);
         }
 
+        // UNIQUE NULLS NOT DISTINCT w bazie pozwala traktować brak metricCode
+        // jako część klucza i bezpiecznie wykonać jeden atomowy upsert.
         jdbcTemplate.update(
                 """
                 insert into entitlement.organization_entitlements (
@@ -248,6 +281,8 @@ public class EntitlementService {
     ) {
         var organizationPeriod = organizationEntitlement.getPeriod();
         var userPeriod = userEntitlement.getPeriod();
+        // Nie można bezpośrednio porównać np. limitu dziennego i miesięcznego.
+        // Zamiast zgadywać przelicznik, serwis wymaga identycznych okresów.
         if (userPeriod != null && organizationPeriod != null && !userPeriod.equals(organizationPeriod)) {
             throw new BadRequestException("User entitlement period must match organization entitlement period.");
         }

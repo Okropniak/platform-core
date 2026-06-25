@@ -24,11 +24,20 @@ import java.util.UUID;
 @RequestMapping("/admin/organizations/{id}/subscriptions")
 @PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
+/**
+ * Administracyjne API aktywacji i zmiany subskrypcji.
+ *
+ * <p>Kontroler deleguje do wspólnego {@link BillingService}, dzięki czemu
+ * reguły cyklu życia subskrypcji nie są duplikowane w module admin.</p>
+ */
 public class AdminSubscriptionController {
 
     private final BillingService billingService;
 
     @PostMapping
+    /**
+     * Aktywuje ręcznie wskazany plan dla dowolnej istniejącej organizacji.
+     */
     SubscriptionResponse createManualSubscription(
             @PathVariable UUID id,
             @AuthenticationPrincipal Jwt jwt,
@@ -43,6 +52,9 @@ public class AdminSubscriptionController {
     }
 
     @PutMapping("/{productCode}")
+    /**
+     * Zmienia plan lub status istniejącej bądź tworzonej subskrypcji.
+     */
     SubscriptionResponse changeSubscription(
             @PathVariable UUID id,
             @PathVariable String productCode,

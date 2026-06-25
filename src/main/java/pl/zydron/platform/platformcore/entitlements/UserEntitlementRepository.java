@@ -6,6 +6,12 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Repozytorium wyjątków i limitów przypisanych konkretnemu użytkownikowi.
+ *
+ * <p>Zapytanie {@link #findCurrent} uwzględnia aktywność oraz przedział
+ * ważności, aby wygasły rekord nie wpływał na bieżącą autoryzację.</p>
+ */
 public interface UserEntitlementRepository extends JpaRepository<UserEntitlementEntity, UUID> {
 
     @Query(value = """

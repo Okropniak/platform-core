@@ -21,11 +21,20 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
+/**
+ * Udostępnia API naliczania i odczytu zużycia.
+ *
+ * <p>Klient produktu przekazuje organizację, produkt, metrykę, ilość oraz
+ * klucz idempotencji. Tożsamość użytkownika zawsze pochodzi z JWT.</p>
+ */
 public class UsageController {
 
     private final UsageService usageService;
 
     @PostMapping("/api/usage/consume")
+    /**
+     * Natychmiast nalicza faktyczną ilość użycia.
+     */
     UsageResult consume(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody ConsumeUsageRequest request) {
         return usageService.consumeUsage(
                 request.organizationId(),
@@ -38,6 +47,9 @@ public class UsageController {
     }
 
     @PostMapping("/api/usage/reserve")
+    /**
+     * Rezerwuje przewidywane użycie przed wykonaniem kosztownej operacji.
+     */
     ReservationResult reserve(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody ReserveUsageRequest request) {
         return usageService.reserveUsage(
                 request.organizationId(),
@@ -50,11 +62,17 @@ public class UsageController {
     }
 
     @PostMapping("/api/usage/finalize")
+    /**
+     * Zamienia rezerwację na faktyczne użycie i uwalnia niewykorzystaną część.
+     */
     FinalizationResult finalize(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody FinalizeUsageRequest request) {
         return usageService.finalizeUsage(request.reservationId(), JwtUser.userId(jwt), request.actualAmount());
     }
 
     @GetMapping("/api/organizations/{id}/usage/{productCode}")
+    /**
+     * Zwraca liczniki organizacji dla wskazanego produktu.
+     */
     List<UsageSummaryItem> summary(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID id,

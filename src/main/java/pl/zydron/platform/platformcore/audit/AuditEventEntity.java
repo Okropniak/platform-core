@@ -24,6 +24,13 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(schema = "audit", name = "audit_events")
+/**
+ * Niezmienny wpis historii ważnej operacji.
+ *
+ * <p>Metadata jest mapowana do PostgreSQL {@code jsonb} przez Hibernate.
+ * Tabela ma służyć dopisywaniu zdarzeń; aplikacja nie powinna aktualizować ani
+ * usuwać historycznych rekordów.</p>
+ */
 public class AuditEventEntity {
 
     @Id

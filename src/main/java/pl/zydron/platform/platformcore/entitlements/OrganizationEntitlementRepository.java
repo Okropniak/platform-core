@@ -7,6 +7,13 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Repozytorium praw przypisanych całej organizacji.
+ *
+ * <p>Niestandardowe zapytanie wybiera najnowszy aktywny rekord, którego okres
+ * ważności obejmuje bieżący czas. Operator dla {@code metricCode=null}
+ * odróżnia funkcję niemierzoną od funkcji połączonej z metryką.</p>
+ */
 public interface OrganizationEntitlementRepository extends JpaRepository<OrganizationEntitlementEntity, UUID> {
 
     @Query(value = """

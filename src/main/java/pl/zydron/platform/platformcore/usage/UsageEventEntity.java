@@ -21,6 +21,12 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(schema = "usage", name = "usage_events")
+/**
+ * Niezmienny dziennik operacji wpływających na liczniki usage.
+ *
+ * <p>Klucz idempotencji wiąże retry klienta z pierwszym wynikiem. Zdarzenia
+ * umożliwiają odtworzenie, dlaczego licznik ma określoną wartość.</p>
+ */
 public class UsageEventEntity {
 
     @Id

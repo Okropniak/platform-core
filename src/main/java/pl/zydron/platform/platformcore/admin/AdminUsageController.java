@@ -15,11 +15,18 @@ import java.util.UUID;
 @RequestMapping("/admin/organizations/{id}/usage")
 @PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
+/**
+ * Udostępnia administratorowi techniczny widok liczników użycia organizacji.
+ */
 public class AdminUsageController {
 
     private final AdminReadService adminReadService;
 
     @GetMapping
+    /**
+     * Zwraca liczniki wszystkich produktów albo tylko produktu wskazanego
+     * opcjonalnym parametrem.
+     */
     List<AdminReadService.UsageCounterRow> usage(
             @PathVariable UUID id,
             @RequestParam(required = false) String productCode

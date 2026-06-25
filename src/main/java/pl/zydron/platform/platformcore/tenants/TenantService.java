@@ -13,6 +13,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Implementuje reguły organizacji i członkostw.
+ *
+ * <p>Serwis jest publicznym punktem wejścia do modułu tenants. Inne moduły
+ * używają go między innymi do sprawdzania, czy użytkownik jest aktywnym
+ * członkiem albo managerem organizacji.</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class TenantService {
@@ -24,6 +31,13 @@ public class TenantService {
     private final JdbcTemplate jdbcTemplate;
 
     @Transactional
+    /**
+     * Tworzy organizację i członkostwo właściciela w jednej transakcji.
+     *
+     * <p>Jeżeli drugi zapis się nie powiedzie, transakcja wycofa również
+     * utworzenie organizacji, dzięki czemu nie powstanie organizacja bez
+     * właściciela.</p>
+     */
     public OrganizationEntity createOrganization(UUID userId, String name, String type) {
         var now = OffsetDateTime.now();
         var organization = organizationRepository.save(OrganizationEntity.builder()
@@ -45,6 +59,13 @@ public class TenantService {
     }
 
     @Transactional
+    /**
+     * Dodaje istniejącego użytkownika Supabase do organizacji.
+     *
+     * @throws PlatformAccessDeniedException gdy wywołujący nie jest managerem
+     * @throws BadRequestException gdy użytkownik docelowy nie istnieje
+     * @throws ConflictException gdy członkostwo już istnieje
+     */
     public OrganizationMemberEntity addMember(UUID organizationId, UUID requestingUserId, UUID targetUserId, String role) {
         requireManager(organizationId, requestingUserId);
         requireExistingUser(targetUserId);
@@ -62,11 +83,20 @@ public class TenantService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Zwraca organizacje z aktywnym członkostwem wskazanego użytkownika.
+     */
     public List<OrganizationEntity> getOrganizationsForUser(UUID userId) {
         return organizationMemberRepository.findActiveOrganizationsForUser(userId);
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Sprawdza, czy użytkownik ma aktywną rolę owner lub admin.
+     *
+     * <p>Metoda nie zwraca wartości. Brak wyjątku oznacza pozytywny wynik
+     * autoryzacji.</p>
+     */
     public void requireManager(UUID organizationId, UUID userId) {
         var member = requireActiveMember(organizationId, userId);
 
@@ -76,6 +106,9 @@ public class TenantService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Zwraca aktywne członkostwo albo przerywa operację błędem HTTP 403.
+     */
     public OrganizationMemberEntity requireActiveMember(UUID organizationId, UUID userId) {
         var member = organizationMemberRepository.findByIdOrganizationIdAndIdUserId(organizationId, userId)
                 .filter(candidate -> "active".equals(candidate.getStatus()))
@@ -85,6 +118,8 @@ public class TenantService {
     }
 
     private void requireExistingUser(UUID userId) {
+        // Repozytoria aplikacji nie mapują tabeli auth.users, dlatego ten prosty
+        // test istnienia wykonujemy bezpośrednio przez JdbcTemplate.
         Boolean exists = jdbcTemplate.queryForObject(
                 "select exists (select 1 from auth.users where id = ?)",
                 Boolean.class,

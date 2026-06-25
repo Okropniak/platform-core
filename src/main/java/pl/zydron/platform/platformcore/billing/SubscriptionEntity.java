@@ -19,6 +19,13 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(schema = "billing", name = "subscriptions")
+/**
+ * Encja aktualnej subskrypcji organizacji na jeden produkt.
+ *
+ * <p>Para organizacja-produkt jest unikalna. Pola providera przygotowują model
+ * pod zewnętrzne płatności, ale obecnie aktywnie używany jest provider
+ * {@code manual}.</p>
+ */
 public class SubscriptionEntity {
 
     @Id

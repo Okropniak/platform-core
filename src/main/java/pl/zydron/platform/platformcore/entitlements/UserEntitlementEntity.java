@@ -20,6 +20,12 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(schema = "entitlement", name = "user_entitlements")
+/**
+ * Dodatkowe ograniczenie przypisane konkretnemu użytkownikowi organizacji.
+ *
+ * <p>Rekord nie zastępuje entitlementu organizacji. Skuteczny dostęp wymaga
+ * spełnienia obu poziomów, a liczbowo obowiązuje bardziej restrykcyjny limit.</p>
+ */
 public class UserEntitlementEntity {
 
     @Id

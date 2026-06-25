@@ -14,6 +14,13 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Realizuje rejestrację użytkowników oraz nadawanie i sprawdzanie dostępu.
+ *
+ * <p>Operacje typu upsert są wykonywane przez parametryzowany SQL, aby
+ * pojedyncza instrukcja PostgreSQL atomowo obsługiwała także równoczesne
+ * żądania.</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class ProductService {
@@ -27,6 +34,12 @@ public class ProductService {
     private final ObjectMapper objectMapper;
 
     @Transactional
+    /**
+     * Rejestruje użytkownika w produkcie lub aktualizuje jego zgody.
+     *
+     * <p>{@code ON CONFLICT DO UPDATE} zapobiega błędowi przy równoczesnej lub
+     * ponownej rejestracji tego samego użytkownika.</p>
+     */
     public ProductRegistrationEntity registerUserToProduct(
             UUID organizationId,
             UUID userId,
@@ -37,6 +50,8 @@ public class ProductService {
         tenantService.requireActiveMember(organizationId, userId);
         requireActiveProduct(productCode);
 
+        // JPA save wymagałoby schematu "odczytaj, potem wstaw", podatnego na
+        // wyścig. PostgreSQL wykonuje poniższy upsert jako jedną operację.
         ProductRegistrationEntity registration = jdbcTemplate.queryForObject(
                 """
                 insert into platform.product_registrations (
@@ -90,6 +105,12 @@ public class ProductService {
     }
 
     @Transactional
+    /**
+     * Nadaje dostęp członkowi organizacji albo aktualizuje istniejącą rolę.
+     *
+     * @throws pl.zydron.platform.platformcore.common.PlatformAccessDeniedException
+     *         gdy wywołujący nie jest managerem
+     */
     public ProductAccessEntity grantAccess(
             UUID organizationId,
             UUID requestingUserId,
@@ -149,6 +170,10 @@ public class ProductService {
     }
 
     @Transactional
+    /**
+     * Logicznie odbiera dostęp przez ustawienie {@code enabled=false}.
+     * Rekord pozostaje w bazie jako historia wcześniej nadanego dostępu.
+     */
     public ProductAccessEntity revokeAccess(
             UUID organizationId,
             UUID requestingUserId,
@@ -175,6 +200,12 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Sprawdza skuteczny dostęp przez funkcję PostgreSQL.
+     *
+     * <p>Funkcja zwraca JSON, ponieważ wynik obejmuje zarówno decyzję
+     * {@code allowed}, jak i rolę. Jackson zamienia ten JSON na rekord Java.</p>
+     */
     public ProductAccessResult checkAccess(
             UUID organizationId,
             UUID requestingUserId,
@@ -200,6 +231,8 @@ public class ProductService {
         try {
             return objectMapper.readValue(payload, ProductAccessResult.class);
         } catch (JacksonException exception) {
+            // Niepoprawny JSON oznacza złamanie kontraktu między migracją SQL
+            // a kodem Java, dlatego jest to błąd wewnętrzny, a nie błąd klienta.
             throw new IllegalStateException("Invalid product access result returned by database.", exception);
         }
     }

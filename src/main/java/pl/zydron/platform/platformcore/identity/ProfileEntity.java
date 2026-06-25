@@ -19,6 +19,13 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(schema = "platform", name = "profiles")
+/**
+ * Encja danych aplikacyjnych użytkownika.
+ *
+ * <p>{@code userId} wskazuje rekord Supabase {@code auth.users}. Osobny
+ * techniczny identyfikator {@code id} pozwala rozwijać profil bez zmieniania
+ * tożsamości dostarczanej przez zewnętrzny system uwierzytelnienia.</p>
+ */
 public class ProfileEntity {
 
     @Id

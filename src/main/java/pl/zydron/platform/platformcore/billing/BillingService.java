@@ -13,6 +13,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Zarządza cyklem życia subskrypcji i synchronizacją wynikających z nich praw.
+ *
+ * <p>Metody użytkownika sprawdzają rolę managera. Osobne metody administracyjne
+ * pomijają członkostwo w organizacji, ponieważ ich dostęp jest chroniony
+ * globalną rolą ADMIN na poziomie kontrolera.</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class BillingService {
@@ -27,6 +34,9 @@ public class BillingService {
     private final AuditService auditService;
 
     @Transactional
+    /**
+     * Aktywuje ręczną subskrypcję na żądanie managera organizacji.
+     */
     public SubscriptionEntity createManualSubscription(
             UUID organizationId,
             UUID requestingUserId,
@@ -44,6 +54,12 @@ public class BillingService {
     }
 
     @Transactional
+    /**
+     * Aktywuje ręczną subskrypcję z poziomu administracji platformy.
+     *
+     * <p>Metoda sprawdza istnienie organizacji, ale nie wymaga członkostwa
+     * administratora w tej organizacji.</p>
+     */
     public SubscriptionEntity createManualSubscriptionAsAdmin(
             UUID organizationId,
             UUID adminUserId,
@@ -75,6 +91,8 @@ public class BillingService {
         applyStatus(subscription, plan, "active", "manual", now);
 
         SubscriptionEntity saved = subscriptionRepository.save(subscription);
+        // Subskrypcja i entitlementy są zmieniane w tej samej transakcji.
+        // Błąd synchronizacji wycofa również zapis subskrypcji.
         entitlementSyncService.syncFromPlan(organizationId, productCode, planCode);
         auditSubscriptionChanged(
                 organizationId,
@@ -88,6 +106,9 @@ public class BillingService {
     }
 
     @Transactional
+    /**
+     * Anuluje istniejącą subskrypcję na żądanie managera organizacji.
+     */
     public SubscriptionEntity cancelSubscription(UUID organizationId, UUID requestingUserId, String productCode) {
         tenantService.requireManager(organizationId, requestingUserId);
         OffsetDateTime now = OffsetDateTime.now();
@@ -112,6 +133,10 @@ public class BillingService {
     }
 
     @Transactional
+    /**
+     * Publiczny punkt dla przyszłych zmian statusu subskrypcji wykonywanych
+     * w imieniu managera organizacji.
+     */
     public SubscriptionEntity onSubscriptionChanged(
             UUID organizationId,
             UUID requestingUserId,
@@ -131,6 +156,9 @@ public class BillingService {
     }
 
     @Transactional
+    /**
+     * Zmienia plan lub status z poziomu administracji platformy.
+     */
     public SubscriptionEntity changeSubscriptionAsAdmin(
             UUID organizationId,
             UUID adminUserId,
@@ -182,6 +210,9 @@ public class BillingService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Zwraca wszystkie subskrypcje organizacji po sprawdzeniu członkostwa.
+     */
     public List<SubscriptionEntity> getSubscriptions(UUID organizationId, UUID requestingUserId) {
         tenantService.requireActiveMember(organizationId, requestingUserId);
         return subscriptionRepository.findByOrganizationIdOrderByProductCodeAsc(organizationId);
@@ -207,6 +238,9 @@ public class BillingService {
     ) {
         subscription.setPlanCode(plan.getPlanCode());
         subscription.setStatus(status);
+        // Provider przekazany jawnie dotyczy nowej ręcznej aktywacji. Przy
+        // późniejszej zmianie statusu zachowujemy istniejącego providera,
+        // na przykład "stripe".
         if (provider != null || subscription.getProvider() == null) {
             subscription.setProvider(provider == null ? "manual" : provider);
         }
@@ -245,6 +279,8 @@ public class BillingService {
     }
 
     private void downgradeToFreePlanIfAvailable(UUID organizationId, String productCode) {
+        // Anulowanie płatnego planu nie może pozostawić płatnych entitlementów.
+        // Preferujemy szablon free, a przy jego braku wyłączamy prawa z planu.
         if (planRepository.findByProductCodeAndPlanCodeAndActiveTrue(productCode, FREE_PLAN).isPresent()) {
             entitlementSyncService.syncFromPlan(organizationId, productCode, FREE_PLAN);
         } else {

@@ -22,9 +22,23 @@ import java.util.Map;
 
 @Configuration
 @EnableMethodSecurity
+/**
+ * Konfiguruje uwierzytelnienie JWT i reguły dostępu do endpointów.
+ *
+ * <p>Aplikacja nie tworzy sesji HTTP. Każde żądanie musi ponownie przedstawić
+ * token. Podpis i issuer tokenu są sprawdzane przez Spring OAuth2 Resource
+ * Server, a role są zamieniane na standardowe uprawnienia {@code ROLE_*}.</p>
+ */
 public class SecurityConfiguration {
 
     @Bean
+    /**
+     * Buduje główny łańcuch filtrów bezpieczeństwa.
+     *
+     * <p>Health check pozostaje publiczny. Endpointy administratora wymagają
+     * roli ADMIN, a wszystkie pozostałe endpointy wymagają dowolnego poprawnie
+     * uwierzytelnionego użytkownika.</p>
+     */
     SecurityFilterChain apiSecurityFilterChain(
             HttpSecurity http,
             JwtAuthenticationConverter jwtAuthenticationConverter
@@ -45,6 +59,13 @@ public class SecurityConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(JwtDecoder.class)
+    /**
+     * Dostarcza bezpieczny decoder zastępczy, gdy issuer JWT nie jest
+     * skonfigurowany.
+     *
+     * <p>Aplikacja może wtedy wystartować na potrzeby testów, ale każde żądanie
+     * z tokenem zostanie odrzucone z czytelnym błędem konfiguracji.</p>
+     */
     JwtDecoder unconfiguredJwtDecoder() {
         return token -> {
             throw new JwtException("Configure SUPABASE_JWT_ISSUER_URI before accepting JWT requests.");
@@ -52,6 +73,13 @@ public class SecurityConfiguration {
     }
 
     @Bean
+    /**
+     * Tworzy konwerter claimów JWT na uprawnienia Spring Security.
+     *
+     * <p>Role są akceptowane w kilku formatach spotykanych w tokenach
+     * Supabase. Dane z {@code user_metadata} nie są używane, ponieważ
+     * użytkownik może je samodzielnie modyfikować.</p>
+     */
     JwtAuthenticationConverter jwtAuthenticationConverter() {
         var scopesConverter = new JwtGrantedAuthoritiesConverter();
         var converter = new JwtAuthenticationConverter();

@@ -20,6 +20,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Buduje przekrojowe widoki odczytowe potrzebne portalowi administratora.
+ *
+ * <p>Moduł admin czyta dane z kilku modułów. Proste dane pobiera przez
+ * repozytoria JPA, a zestawienia i dynamiczne filtry przez parametryzowany
+ * {@link JdbcTemplate}.</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminReadService {
@@ -29,11 +36,20 @@ public class AdminReadService {
     private final JdbcTemplate jdbcTemplate;
 
     @Transactional(readOnly = true)
+    /**
+     * Zwraca stronicowaną listę organizacji.
+     */
     public Page<OrganizationSummary> organizations(Pageable pageable) {
         return organizationRepository.findAll(pageable).map(this::toSummary);
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Składa szczegół organizacji z kilku niezależnych zapytań.
+     *
+     * <p>Jest to widok administracyjny o małym przewidywanym ruchu, dlatego
+     * preferuje czytelność nad jednym rozbudowanym zapytaniem SQL.</p>
+     */
     public OrganizationDetail organizationDetail(UUID organizationId) {
         OrganizationEntity organization = organizationRepository.findById(organizationId)
                 .orElseThrow(() -> new BadRequestException("Organization does not exist."));
@@ -56,6 +72,9 @@ public class AdminReadService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Zwraca wszystkie entitlementy organizacji, również wyłączone i wygasłe.
+     */
     public List<EntitlementRow> entitlements(UUID organizationId) {
         requireOrganization(organizationId);
         return jdbcTemplate.query(
@@ -89,8 +108,14 @@ public class AdminReadService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Zwraca techniczny widok liczników z opcjonalnym filtrem produktu.
+     */
     public List<UsageCounterRow> usage(UUID organizationId, String productCode) {
         requireOrganization(organizationId);
+        // Nazwy kolumn i warunki są stałe w kodzie. Do listy argumentów trafiają
+        // wyłącznie wartości, więc nie są sklejane z SQL i nie umożliwiają
+        // wstrzyknięcia zapytania.
         var sql = new StringBuilder("""
                 select product_code,
                        metric_code,
@@ -130,6 +155,12 @@ public class AdminReadService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Buduje stronicowane zapytanie audytu z opcjonalnymi filtrami.
+     *
+     * <p>Zapytanie danych i zapytanie COUNT używają identycznej sekcji WHERE,
+     * aby liczba wszystkich elementów odpowiadała zawartości strony.</p>
+     */
     public Page<AuditRow> audit(
             UUID organizationId,
             String productCode,

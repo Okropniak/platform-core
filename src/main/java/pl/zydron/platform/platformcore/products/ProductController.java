@@ -24,12 +24,23 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
+/**
+ * Udostępnia API rejestracji użytkownika i zarządzania dostępem do produktów.
+ *
+ * <p>Kontroler mapuje dane HTTP na parametry serwisu. Decyzje o członkostwie
+ * i uprawnieniach managera podejmuje {@link ProductService} wraz z modułem
+ * tenants.</p>
+ */
 public class ProductController {
 
     private final ProductService productService;
 
     @PostMapping("/api/products/{code}/register")
     @ResponseStatus(HttpStatus.CREATED)
+    /**
+     * Rejestruje zalogowanego użytkownika w produkcie i zapisuje zaakceptowane
+     * wersje warunków oraz polityki prywatności.
+     */
     ProductRegistrationResponse register(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable String code,
@@ -46,6 +57,10 @@ public class ProductController {
 
     @PostMapping("/api/products/{code}/access")
     @ResponseStatus(HttpStatus.CREATED)
+    /**
+     * Nadaje lub ponownie włącza dostęp do produktu wskazanemu członkowi
+     * organizacji. Operację może wykonać wyłącznie manager organizacji.
+     */
     ProductAccessResponse grantAccess(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable String code,
@@ -61,6 +76,9 @@ public class ProductController {
     }
 
     @DeleteMapping("/api/organizations/{organizationId}/products/{code}/access/{userId}")
+    /**
+     * Wyłącza dostęp użytkownika bez usuwania historycznego rekordu.
+     */
     ProductAccessResponse revokeAccess(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID organizationId,
@@ -76,6 +94,10 @@ public class ProductController {
     }
 
     @GetMapping("/api/products/{code}/access")
+    /**
+     * Sprawdza dostęp. Użytkownik może sprawdzić siebie, natomiast sprawdzenie
+     * innej osoby wymaga roli managera organizacji.
+     */
     ProductAccessCheckResponse checkAccess(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable String code,

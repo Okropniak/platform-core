@@ -21,11 +21,17 @@ import java.util.UUID;
 @RequestMapping("/admin/organizations/{id}/entitlements")
 @PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
+/**
+ * API ręcznych zmian praw organizacji dostępne wyłącznie dla administratora.
+ */
 public class AdminEntitlementController {
 
     private final AdminEntitlementService adminEntitlementService;
 
     @PutMapping
+    /**
+     * Ustawia wskazany entitlement niezależnie od bieżącego planu organizacji.
+     */
     AdminEntitlementService.EntitlementOverrideResult overrideEntitlement(
             @PathVariable UUID id,
             @AuthenticationPrincipal Jwt jwt,

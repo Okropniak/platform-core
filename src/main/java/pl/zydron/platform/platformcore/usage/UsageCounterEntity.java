@@ -20,6 +20,13 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(schema = "usage", name = "usage_counters")
+/**
+ * Zagregowany licznik użycia metryki w jednym okresie.
+ *
+ * <p>{@code usedValue} opisuje użycie zakończone, a {@code reservedValue}
+ * ilość tymczasowo zablokowaną. {@code counterScope} rozróżnia licznik całej
+ * organizacji od licznika konkretnego użytkownika.</p>
+ */
 public class UsageCounterEntity {
 
     @Id

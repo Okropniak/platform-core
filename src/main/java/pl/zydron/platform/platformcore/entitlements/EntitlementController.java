@@ -12,11 +12,17 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
+/**
+ * Udostępnia odczyt funkcji i limitów organizacji dla wskazanego produktu.
+ */
 public class EntitlementController {
 
     private final EntitlementService entitlementService;
 
     @GetMapping("/api/organizations/{id}/entitlements/{productCode}")
+    /**
+     * Zwraca entitlementy aktywnemu członkowi organizacji.
+     */
     EntitlementService.EntitlementsResponse getEntitlements(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID id,

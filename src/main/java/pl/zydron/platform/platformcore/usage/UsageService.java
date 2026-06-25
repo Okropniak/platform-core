@@ -15,6 +15,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Łączy autoryzację organizacji z funkcjami PostgreSQL naliczającymi użycie.
+ *
+ * <p>Wrażliwa logika współbieżności, idempotencji i atomowej aktualizacji
+ * liczników znajduje się w funkcjach {@code usage.*}. Java przekazuje
+ * parametry, parsuje wynik JSON i uruchamia audit odrzuconych operacji.</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class UsageService {
@@ -27,6 +34,12 @@ public class UsageService {
     private final ObjectMapper objectMapper;
 
     @Transactional
+    /**
+     * Natychmiast zwiększa licznik, jeśli limit na to pozwala.
+     *
+     * @param idempotencyKey unikalny klucz logicznej operacji; ponowienie
+     *                       z tym samym kluczem zwraca poprzedni wynik
+     */
     public UsageResult consumeUsage(
             UUID organizationId,
             UUID userId,
@@ -53,6 +66,9 @@ public class UsageService {
     }
 
     @Transactional
+    /**
+     * Rezerwuje część limitu do późniejszej finalizacji.
+     */
     public ReservationResult reserveUsage(
             UUID organizationId,
             UUID userId,
@@ -79,6 +95,13 @@ public class UsageService {
     }
 
     @Transactional
+    /**
+     * Finalizuje rezerwację należącą do zalogowanego użytkownika.
+     *
+     * <p>Wyszukiwanie po parze reservationId-userId nie ujawnia, czy podany
+     * identyfikator należy do innego użytkownika. W obu przypadkach klient
+     * otrzymuje {@code reservation_not_found}.</p>
+     */
     public FinalizationResult finalizeUsage(UUID reservationId, UUID userId, BigDecimal actualAmount) {
         var reservation = usageReservationRepository.findByIdAndUserId(reservationId, userId);
         if (reservation.isEmpty()) {
@@ -93,6 +116,8 @@ public class UsageService {
                 userId,
                 actualAmount
         ), FinalizationResult.class);
+        // Powtórna finalizacja nie jest audytowana: reservation_not_active może
+        // być zwykłym, bezpiecznym retry klienta. Pozostałe odrzucenia są ważne.
         if (!result.finalized() && !"reservation_not_active".equals(result.reason())) {
             String eventType = "limit_exceeded".equals(result.reason())
                     ? "usage_limit_exceeded"
@@ -115,6 +140,9 @@ public class UsageService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Zwraca organizacyjne liczniki użycia dla produktu.
+     */
     public List<UsageSummaryItem> getUsageSummary(UUID organizationId, UUID userId, String productCode) {
         tenantService.requireActiveMember(organizationId, userId);
         return usageCounterRepository.findOrganizationSummary(organizationId, productCode).stream()
@@ -138,6 +166,8 @@ public class UsageService {
         try {
             return objectMapper.readValue(payload, type);
         } catch (JacksonException exception) {
+            // Zmiana formatu JSON w funkcji SQL wymaga jednoczesnej zmiany
+            // rekordu Java. Niespójność jest błędem kontraktu wewnętrznego.
             throw new IllegalStateException("Invalid usage result returned by database.", exception);
         }
     }

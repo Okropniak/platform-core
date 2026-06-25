@@ -12,6 +12,13 @@ import java.math.BigDecimal;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Wykonuje ręczne nadpisanie entitlementu organizacji przez administratora.
+ *
+ * <p>Upsert zachowuje jeden aktualny rekord dla kombinacji organizacji,
+ * produktu, funkcji i metryki. Domyślnym źródłem jest
+ * {@code admin_override}, co odróżnia zmianę od praw pochodzących z planu.</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminEntitlementService {
@@ -21,6 +28,9 @@ public class AdminEntitlementService {
     private final AuditService auditService;
 
     @Transactional
+    /**
+     * Tworzy albo aktualizuje ręczny entitlement i zapisuje audit.
+     */
     public EntitlementOverrideResult overrideOrganizationEntitlement(
             UUID organizationId,
             UUID adminUserId,
@@ -36,6 +46,8 @@ public class AdminEntitlementService {
             throw new BadRequestException("Organization does not exist.");
         }
         String effectiveSource = source == null || source.isBlank() ? "admin_override" : source;
+        // Jedna instrukcja SQL eliminuje wyścig między sprawdzeniem istnienia
+        // rekordu a jego utworzeniem.
         EntitlementOverrideResult result = jdbcTemplate.queryForObject(
                 """
                 insert into entitlement.organization_entitlements (

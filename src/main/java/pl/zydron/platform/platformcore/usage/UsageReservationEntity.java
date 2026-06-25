@@ -20,6 +20,13 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(schema = "usage", name = "usage_reservations")
+/**
+ * Tymczasowa rezerwacja części limitu przed poznaniem faktycznego kosztu.
+ *
+ * <p>Rezerwacja ma właściciela, termin wygaśnięcia i klucz idempotencji.
+ * Finalizacja zapisuje {@code actualAmount} i zwalnia różnicę względem
+ * wcześniej zarezerwowanej ilości.</p>
+ */
 public class UsageReservationEntity {
 
     @Id

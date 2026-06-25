@@ -12,6 +12,13 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Embeddable
+/**
+ * Złożony identyfikator członkostwa w organizacji.
+ *
+ * <p>Ta sama osoba może należeć do wielu organizacji, ale w jednej organizacji
+ * może mieć tylko jeden rekord członkostwa. Dlatego klucz składa się z UUID
+ * organizacji i UUID użytkownika.</p>
+ */
 public class OrganizationMemberId implements Serializable {
 
     private UUID organizationId;

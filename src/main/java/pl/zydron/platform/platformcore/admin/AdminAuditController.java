@@ -17,11 +17,18 @@ import java.util.UUID;
 @RequestMapping("/admin/audit")
 @PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
+/**
+ * Udostępnia stronicowany i filtrowany odczyt logu audytowego.
+ */
 public class AdminAuditController {
 
     private final AdminReadService adminReadService;
 
     @GetMapping
+    /**
+     * Filtruje zdarzenia po opcjonalnej organizacji, produkcie, typie i
+     * półotwartym przedziale czasu {@code [dateFrom, dateTo)}.
+     */
     Page<AdminReadService.AuditRow> audit(
             @RequestParam(required = false) UUID orgId,
             @RequestParam(required = false) String productCode,

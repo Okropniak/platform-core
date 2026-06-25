@@ -20,6 +20,13 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(schema = "entitlement", name = "organization_entitlements")
+/**
+ * Prawo do funkcji lub limit obowiązujący całą organizację.
+ *
+ * <p>{@code metricCode=null} oznacza funkcję typu włączona/wyłączona.
+ * Niepusta metryka łączy funkcję z liczbowym limitem. Pola ważności pozwalają
+ * zachować historię zmian i wyłączyć rekord bez jego usuwania.</p>
+ */
 public class OrganizationEntitlementEntity {
 
     @Id

@@ -21,12 +21,22 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
+/**
+ * Udostępnia użytkownikom organizacji operacje na subskrypcjach.
+ *
+ * <p>Jest to API ręcznego modelu billingowego. Nie pobiera płatności i nie
+ * komunikuje się z zewnętrznym operatorem płatności.</p>
+ */
 public class BillingController {
 
     private final BillingService billingService;
 
     @PostMapping("/api/organizations/{organizationId}/subscriptions")
     @ResponseStatus(HttpStatus.CREATED)
+    /**
+     * Aktywuje wskazany plan. Zalogowany użytkownik musi być managerem
+     * organizacji.
+     */
     SubscriptionResponse createManualSubscription(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID organizationId,
@@ -41,6 +51,10 @@ public class BillingController {
     }
 
     @DeleteMapping("/api/organizations/{organizationId}/subscriptions/{productCode}")
+    /**
+     * Anuluje subskrypcję i przełącza entitlementy na plan bezpłatny albo je
+     * wyłącza, gdy produkt nie posiada planu free.
+     */
     SubscriptionResponse cancelSubscription(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID organizationId,
@@ -54,6 +68,9 @@ public class BillingController {
     }
 
     @GetMapping("/api/organizations/{organizationId}/subscriptions")
+    /**
+     * Zwraca subskrypcje organizacji aktywnemu członkowi tej organizacji.
+     */
     List<SubscriptionResponse> getSubscriptions(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID organizationId

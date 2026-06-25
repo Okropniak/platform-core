@@ -6,6 +6,12 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Repozytorium liczników użycia.
+ *
+ * <p>Podsumowanie użytkownika pokazuje liczniki zakresu organizacji. Liczniki
+ * per użytkownik służą egzekwowaniu limitów, ale nie są zwracane w tym widoku.</p>
+ */
 public interface UsageCounterRepository extends JpaRepository<UsageCounterEntity, UUID> {
 
     @Query("""
