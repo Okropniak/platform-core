@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pl.zydron.platform.platformcore.common.BadRequestException;
 import pl.zydron.platform.platformcore.common.ConflictException;
+import pl.zydron.platform.platformcore.common.PlatformAccessDeniedException;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -70,7 +71,7 @@ public class TenantService {
         var member = requireActiveMember(organizationId, userId);
 
         if (!MANAGER_ROLES.contains(member.getRole())) {
-            throw new TenantAccessDeniedException("User is not allowed to manage this organization.");
+            throw new PlatformAccessDeniedException("User is not allowed to manage this organization.");
         }
     }
 
@@ -78,7 +79,7 @@ public class TenantService {
     public OrganizationMemberEntity requireActiveMember(UUID organizationId, UUID userId) {
         var member = organizationMemberRepository.findByIdOrganizationIdAndIdUserId(organizationId, userId)
                 .filter(candidate -> "active".equals(candidate.getStatus()))
-                .orElseThrow(() -> new TenantAccessDeniedException("User is not an active organization member."));
+                .orElseThrow(() -> new PlatformAccessDeniedException("User is not an active organization member."));
 
         return member;
     }
