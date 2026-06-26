@@ -2,7 +2,7 @@ package pl.zydron.platform.platformcore.entitlements;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import pl.zydron.platform.platformcore.tenants.TenantService;
+import pl.zydron.platform.platformcore.tenants.TenantAccessPort;
 import pl.zydron.platform.platformcore.common.BadRequestException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -22,7 +22,7 @@ class EntitlementServiceTests {
     private final UserEntitlementRepository userEntitlementRepository = mock(UserEntitlementRepository.class);
     private final FeatureRepository featureRepository = mock(FeatureRepository.class);
     private final MetricRepository metricRepository = mock(MetricRepository.class);
-    private final TenantService tenantService = mock(TenantService.class);
+    private final TenantAccessPort tenantService = mock(TenantAccessPort.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final EntitlementService entitlementService = new EntitlementService(
             organizationEntitlementRepository,

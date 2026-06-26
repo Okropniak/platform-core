@@ -5,7 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pl.zydron.platform.platformcore.common.BadRequestException;
-import pl.zydron.platform.platformcore.tenants.TenantService;
+import pl.zydron.platform.platformcore.tenants.TenantAccessPort;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -33,7 +33,7 @@ public class EntitlementService {
     private final UserEntitlementRepository userEntitlementRepository;
     private final FeatureRepository featureRepository;
     private final MetricRepository metricRepository;
-    private final TenantService tenantService;
+    private final TenantAccessPort tenantService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 

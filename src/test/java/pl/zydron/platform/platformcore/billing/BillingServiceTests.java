@@ -3,7 +3,7 @@ package pl.zydron.platform.platformcore.billing;
 import org.junit.jupiter.api.Test;
 import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.common.BadRequestException;
-import pl.zydron.platform.platformcore.tenants.TenantService;
+import pl.zydron.platform.platformcore.tenants.TenantAccessPort;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -23,7 +23,7 @@ class BillingServiceTests {
 
     private final PlanRepository planRepository = mock(PlanRepository.class);
     private final SubscriptionRepository subscriptionRepository = mock(SubscriptionRepository.class);
-    private final TenantService tenantService = mock(TenantService.class);
+    private final TenantAccessPort tenantService = mock(TenantAccessPort.class);
     private final EntitlementSyncService entitlementSyncService = mock(EntitlementSyncService.class);
     private final AuditService auditService = mock(AuditService.class);
     private final BillingService billingService = new BillingService(
@@ -231,15 +231,15 @@ class BillingServiceTests {
         when(subscriptionRepository.save(any(SubscriptionEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        SubscriptionEntity subscription = billingService.createManualSubscriptionAsAdmin(
+        SubscriptionAdminResult subscription = billingService.createManualSubscriptionAsAdmin(
                 organizationId,
                 adminUserId,
                 "search_saas",
                 "pro"
         );
 
-        assertThat(subscription.getStatus()).isEqualTo("active");
-        assertThat(subscription.getProvider()).isEqualTo("manual");
+        assertThat(subscription.status()).isEqualTo("active");
+        assertThat(subscription.provider()).isEqualTo("manual");
         verify(tenantService).requireOrganizationExists(organizationId);
         verify(tenantService, never()).requireManager(organizationId, adminUserId);
         verify(entitlementSyncService).syncFromPlan(organizationId, "search_saas", "pro");
@@ -268,7 +268,7 @@ class BillingServiceTests {
         when(subscriptionRepository.save(any(SubscriptionEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        SubscriptionEntity changed = billingService.changeSubscriptionAsAdmin(
+        SubscriptionAdminResult changed = billingService.changeSubscriptionAsAdmin(
                 organizationId,
                 adminUserId,
                 "search_saas",
@@ -276,7 +276,7 @@ class BillingServiceTests {
                 "active"
         );
 
-        assertThat(changed.getProvider()).isEqualTo("stripe");
+        assertThat(changed.provider()).isEqualTo("stripe");
         verify(tenantService).requireOrganizationExists(organizationId);
         verify(tenantService, never()).requireManager(organizationId, adminUserId);
         verify(entitlementSyncService).syncFromPlan(organizationId, "search_saas", "pro");

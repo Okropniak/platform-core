@@ -3,7 +3,7 @@ package pl.zydron.platform.platformcore.usage;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import pl.zydron.platform.platformcore.audit.AuditService;
-import pl.zydron.platform.platformcore.tenants.TenantService;
+import pl.zydron.platform.platformcore.tenants.TenantAccessPort;
 import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
@@ -21,7 +21,7 @@ class UsageServiceTests {
 
     private final UsageCounterRepository usageCounterRepository = mock(UsageCounterRepository.class);
     private final UsageReservationRepository usageReservationRepository = mock(UsageReservationRepository.class);
-    private final TenantService tenantService = mock(TenantService.class);
+    private final TenantAccessPort tenantService = mock(TenantAccessPort.class);
     private final AuditService auditService = mock(AuditService.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final UsageService usageService = new UsageService(

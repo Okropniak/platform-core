@@ -13,8 +13,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import pl.zydron.platform.platformcore.billing.BillingService;
-import pl.zydron.platform.platformcore.billing.SubscriptionEntity;
+import pl.zydron.platform.platformcore.billing.AdminBillingPort;
+import pl.zydron.platform.platformcore.billing.SubscriptionAdminResult;
 import pl.zydron.platform.platformcore.common.JwtUser;
 
 import java.time.OffsetDateTime;
@@ -27,12 +27,12 @@ import java.util.UUID;
 /**
  * Administracyjne API aktywacji i zmiany subskrypcji.
  *
- * <p>Kontroler deleguje do wspólnego {@link BillingService}, dzięki czemu
- * reguły cyklu życia subskrypcji nie są duplikowane w module admin.</p>
+ * <p>Kontroler deleguje do {@link AdminBillingPort}, dzięki czemu reguły
+ * cyklu życia subskrypcji nie są duplikowane w module admin.</p>
  */
 public class AdminSubscriptionController {
 
-    private final BillingService billingService;
+    private final AdminBillingPort billingService;
 
     @PostMapping
     /**
@@ -94,17 +94,17 @@ public class AdminSubscriptionController {
             OffsetDateTime currentPeriodEnd,
             OffsetDateTime cancelledAt
     ) {
-        static SubscriptionResponse from(SubscriptionEntity subscription) {
+        static SubscriptionResponse from(SubscriptionAdminResult result) {
             return new SubscriptionResponse(
-                    subscription.getId(),
-                    subscription.getOrganizationId(),
-                    subscription.getProductCode(),
-                    subscription.getPlanCode(),
-                    subscription.getStatus(),
-                    subscription.getProvider(),
-                    subscription.getCurrentPeriodStart(),
-                    subscription.getCurrentPeriodEnd(),
-                    subscription.getCancelledAt()
+                    result.id(),
+                    result.organizationId(),
+                    result.productCode(),
+                    result.planCode(),
+                    result.status(),
+                    result.provider(),
+                    result.currentPeriodStart(),
+                    result.currentPeriodEnd(),
+                    result.cancelledAt()
             );
         }
     }

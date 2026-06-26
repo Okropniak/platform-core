@@ -5,7 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.common.BadRequestException;
-import pl.zydron.platform.platformcore.tenants.TenantService;
+import pl.zydron.platform.platformcore.tenants.TenantAccessPort;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.OffsetDateTime;
@@ -26,7 +26,7 @@ class ProductServiceTests {
     private final ProductRepository productRepository = mock(ProductRepository.class);
     private final ProductRegistrationRepository productRegistrationRepository = mock(ProductRegistrationRepository.class);
     private final ProductAccessRepository productAccessRepository = mock(ProductAccessRepository.class);
-    private final TenantService tenantService = mock(TenantService.class);
+    private final TenantAccessPort tenantService = mock(TenantAccessPort.class);
     private final AuditService auditService = mock(AuditService.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final ProductService productService = new ProductService(

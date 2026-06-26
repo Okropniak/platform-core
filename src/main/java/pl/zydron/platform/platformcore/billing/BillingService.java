@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.common.BadRequestException;
-import pl.zydron.platform.platformcore.tenants.TenantService;
+import pl.zydron.platform.platformcore.tenants.TenantAccessPort;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -21,13 +21,13 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class BillingService {
+public class BillingService implements AdminBillingPort {
 
     private static final String FREE_PLAN = "free";
 
     private final PlanRepository planRepository;
     private final SubscriptionRepository subscriptionRepository;
-    private final TenantService tenantService;
+    private final TenantAccessPort tenantService;
     private final EntitlementSyncService entitlementSyncService;
     private final AuditService auditService;
 
@@ -51,6 +51,7 @@ public class BillingService {
         );
     }
 
+    @Override
     @Transactional
     /**
      * Aktywuje ręczną subskrypcję z poziomu administracji platformy.
@@ -58,20 +59,20 @@ public class BillingService {
      * <p>Metoda sprawdza istnienie organizacji, ale nie wymaga członkostwa
      * administratora w tej organizacji.</p>
      */
-    public SubscriptionEntity createManualSubscriptionAsAdmin(
+    public SubscriptionAdminResult createManualSubscriptionAsAdmin(
             UUID organizationId,
             UUID adminUserId,
             String productCode,
             String planCode
     ) {
         tenantService.requireOrganizationExists(organizationId);
-        return activateManualSubscription(
+        return toAdminResult(activateManualSubscription(
                 organizationId,
                 adminUserId,
                 productCode,
                 planCode,
                 "admin_subscription_created"
-        );
+        ));
     }
 
     private SubscriptionEntity activateManualSubscription(
@@ -153,11 +154,12 @@ public class BillingService {
         );
     }
 
+    @Override
     @Transactional
     /**
      * Zmienia plan lub status z poziomu administracji platformy.
      */
-    public SubscriptionEntity changeSubscriptionAsAdmin(
+    public SubscriptionAdminResult changeSubscriptionAsAdmin(
             UUID organizationId,
             UUID adminUserId,
             String productCode,
@@ -165,14 +167,14 @@ public class BillingService {
             String newStatus
     ) {
         tenantService.requireOrganizationExists(organizationId);
-        return changeSubscription(
+        return toAdminResult(changeSubscription(
                 organizationId,
                 adminUserId,
                 productCode,
                 planCode,
                 newStatus,
                 "admin_subscription_changed"
-        );
+        ));
     }
 
     private SubscriptionEntity changeSubscription(
@@ -296,6 +298,20 @@ public class BillingService {
                 "subscription",
                 subscription.getId() == null ? productCode : subscription.getId().toString(),
                 metadata
+        );
+    }
+
+    private static SubscriptionAdminResult toAdminResult(SubscriptionEntity entity) {
+        return new SubscriptionAdminResult(
+                entity.getId(),
+                entity.getOrganizationId(),
+                entity.getProductCode(),
+                entity.getPlanCode(),
+                entity.getStatus(),
+                entity.getProvider(),
+                entity.getCurrentPeriodStart(),
+                entity.getCurrentPeriodEnd(),
+                entity.getCancelledAt()
         );
     }
 }

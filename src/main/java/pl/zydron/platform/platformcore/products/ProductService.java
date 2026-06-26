@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.common.BadRequestException;
-import pl.zydron.platform.platformcore.tenants.TenantService;
+import pl.zydron.platform.platformcore.tenants.TenantAccessPort;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -28,7 +28,7 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final ProductRegistrationRepository productRegistrationRepository;
     private final ProductAccessRepository productAccessRepository;
-    private final TenantService tenantService;
+    private final TenantAccessPort tenantService;
     private final AuditService auditService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;

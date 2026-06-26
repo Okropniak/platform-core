@@ -23,7 +23,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class TenantService {
+public class TenantService implements TenantAccessPort {
 
     private static final Set<String> MANAGER_ROLES = Set.of("owner", "admin");
 
@@ -41,6 +41,8 @@ public class TenantService {
      * właściciela.</p>
      */
     public OrganizationEntity createOrganization(UUID userId, String displayName, String name, String type) {
+        // Ten bootstrap musi poprzedzać zapisy JPA poniżej, żeby ewentualny
+        // fallback odczytu profilu nie uruchomił flushu niepełnego stanu tenantów.
         profileService.ensureProfileExists(userId, displayName);
 
         var now = OffsetDateTime.now();
@@ -94,35 +96,45 @@ public class TenantService {
         return organizationMemberRepository.findActiveOrganizationsForUser(userId);
     }
 
+    @Override
     @Transactional(readOnly = true)
     /**
-     * Sprawdza, czy użytkownik ma aktywną rolę owner lub admin.
+     * Weryfikuje, że użytkownik ma aktywną rolę owner lub admin.
      *
      * <p>Metoda nie zwraca wartości. Brak wyjątku oznacza pozytywny wynik
      * autoryzacji.</p>
      */
     public void requireManager(UUID organizationId, UUID userId) {
-        var member = requireActiveMember(organizationId, userId);
+        var member = lookupActiveMember(organizationId, userId);
 
         if (!MANAGER_ROLES.contains(member.getRole())) {
             throw new PlatformAccessDeniedException("User is not allowed to manage this organization.");
         }
     }
 
+    @Override
     @Transactional(readOnly = true)
     /**
-     * Zwraca aktywne członkostwo albo przerywa operację błędem HTTP 403.
+     * Weryfikuje, że użytkownik jest aktywnym członkiem organizacji.
+     *
+     * <p>Brak wyjątku oznacza pozytywny wynik weryfikacji. Wartość zwracana
+     * przez {@link #lookupActiveMember} jest ignorowana — zewnętrzni
+     * wywołujący potrzebują wyłącznie efektu strażnika.</p>
      */
-    public OrganizationMemberEntity requireActiveMember(UUID organizationId, UUID userId) {
-        var member = organizationMemberRepository.findByIdOrganizationIdAndIdUserId(organizationId, userId)
-                .filter(candidate -> "active".equals(candidate.getStatus()))
-                .orElseThrow(() -> new PlatformAccessDeniedException("User is not an active organization member."));
-
-        return member;
+    public void requireActiveMember(UUID organizationId, UUID userId) {
+        lookupActiveMember(organizationId, userId);
     }
 
+    @Transactional(readOnly = true)
+    private OrganizationMemberEntity lookupActiveMember(UUID organizationId, UUID userId) {
+        return organizationMemberRepository.findByIdOrganizationIdAndIdUserId(organizationId, userId)
+                .filter(candidate -> "active".equals(candidate.getStatus()))
+                .orElseThrow(() -> new PlatformAccessDeniedException("User is not an active organization member."));
+    }
+
+    @Override
     /**
-     * Sprawdza istnienie organizacji bez wymagania członkostwa użytkownika.
+     * Weryfikuje, że organizacja istnieje.
      *
      * <p>Metoda jest publicznym kontraktem modułu tenants dla operacji
      * administracyjnych wykonywanych przez inne moduły. Dzięki temu billing
