@@ -51,6 +51,24 @@ public class ProfileService {
                 .orElseGet(() -> createProfile(userId, displayName, now));
     }
 
+    /**
+     * Zapewnia, że użytkownik ma profil, ale nie zmienia istniejących danych.
+     *
+     * <p>Metoda jest używana jako zabezpieczenie przy tworzeniu pierwszej
+     * organizacji. Jeżeli frontend wcześniej wywołał {@code PUT /api/profile},
+     * zapisana tam nazwa pozostaje bez zmian. Podana nazwa jest używana tylko
+     * podczas tworzenia brakującego rekordu.</p>
+     *
+     * @param userId UUID użytkownika z Supabase Auth
+     * @param displayName nazwa używana wyłącznie dla nowego profilu
+     * @return istniejący albo właśnie utworzony profil
+     */
+    @Transactional
+    public ProfileEntity ensureProfileExists(UUID userId, String displayName) {
+        return profileRepository.findByUserId(userId)
+                .orElseGet(() -> createProfile(userId, displayName, OffsetDateTime.now()));
+    }
+
     private ProfileEntity createProfile(UUID userId, String displayName, OffsetDateTime now) {
         try {
             return profileRepository.save(ProfileEntity.builder()

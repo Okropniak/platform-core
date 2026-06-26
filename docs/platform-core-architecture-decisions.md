@@ -137,6 +137,13 @@ tables expected by the dependency:
 - `EVENT_PUBLICATION`
 - `EVENT_PUBLICATION_ARCHIVE`
 
+Migration V1 creates these tables in the `platform` schema. PostgreSQL folds
+the unquoted names used by the JPA mappings to lowercase, so the physical table
+names are `platform.event_publication` and
+`platform.event_publication_archive`. `hibernate.default_schema=platform`
+directs the Modulith JPA entities to these Flyway-managed tables, while
+framework schema initialization remains disabled.
+
 ## ADR-010: Modulith observability dependency is deferred until a runtime JAR exists
 
 `spring-modulith-observability:2.1.0-RC1` is published as a POM-packaged

@@ -5,7 +5,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.common.BadRequestException;
-import pl.zydron.platform.platformcore.tenants.OrganizationRepository;
 import pl.zydron.platform.platformcore.tenants.TenantService;
 
 import java.time.OffsetDateTime;
@@ -28,7 +27,6 @@ public class BillingService {
 
     private final PlanRepository planRepository;
     private final SubscriptionRepository subscriptionRepository;
-    private final OrganizationRepository organizationRepository;
     private final TenantService tenantService;
     private final EntitlementSyncService entitlementSyncService;
     private final AuditService auditService;
@@ -66,7 +64,7 @@ public class BillingService {
             String productCode,
             String planCode
     ) {
-        requireOrganization(organizationId);
+        tenantService.requireOrganizationExists(organizationId);
         return activateManualSubscription(
                 organizationId,
                 adminUserId,
@@ -166,7 +164,7 @@ public class BillingService {
             String planCode,
             String newStatus
     ) {
-        requireOrganization(organizationId);
+        tenantService.requireOrganizationExists(organizationId);
         return changeSubscription(
                 organizationId,
                 adminUserId,
@@ -221,12 +219,6 @@ public class BillingService {
     private PlanEntity requireActivePlan(String productCode, String planCode) {
         return planRepository.findByProductCodeAndPlanCodeAndActiveTrue(productCode, planCode)
                 .orElseThrow(() -> new BadRequestException("Plan does not exist or is not active."));
-    }
-
-    private void requireOrganization(UUID organizationId) {
-        if (!organizationRepository.existsById(organizationId)) {
-            throw new BadRequestException("Organization does not exist.");
-        }
     }
 
     private void applyStatus(

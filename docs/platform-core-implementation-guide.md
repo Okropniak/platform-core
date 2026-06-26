@@ -96,11 +96,26 @@ Przechowuje profil użytkownika powiązany z `auth.users` Supabase.
 - znaleźć profil po identyfikatorze użytkownika,
 - zaktualizować nazwę profilu,
 - utworzyć profil, jeżeli jeszcze nie istnieje,
+- zapewnić istnienie profilu bez nadpisywania wcześniej zapisanej nazwy,
 - obsłużyć wyścig dwóch równoczesnych prób utworzenia tego samego profilu.
 
-Obecnie moduł nie ma własnego endpointu HTTP. Profil jest tworzony lub
-aktualizowany przez kod serwisowy. Migracja V4 przygotowuje funkcję
-`platform.handle_new_user()`, ale nie tworzy triggera na `auth.users`.
+Endpoint `PUT /api/profile` tworzy profil albo aktualizuje jego nazwę. UUID
+użytkownika jest zawsze pobierany z JWT, a nie z treści żądania.
+
+Profil może powstać trzema drogami:
+
+1. Trigger Supabase po utworzeniu rekordu `auth.users`.
+2. Jawne wywołanie `PUT /api/profile` przez frontend.
+3. Zabezpieczenie w `TenantService.createOrganization()`, gdy użytkownik tworzy
+   pierwszą organizację.
+
+Trzecia ścieżka używa `ensureProfileExists()`. Tworzy brakujący rekord, ale nie
+zmienia istniejącego profilu. Dzięki temu nazwa ustawiona wcześniej przez
+użytkownika nie zostanie przypadkowo nadpisana.
+
+Migracja V4 przygotowuje funkcję `platform.handle_new_user()`, ale nie może
+utworzyć triggera na zarządzanej tabeli `auth.users`. Trigger instaluje się
+ręcznie skryptem `docs/deployment/supabase-profile-trigger.sql`.
 
 ### 4.3 tenants
 
@@ -121,9 +136,10 @@ sequenceDiagram
     participant S as TenantService
     participant DB as PostgreSQL
 
-    U->>C: POST /api/organizations
+    U->>C: POST /api/organizations z displayName
     C->>C: Odczyt UUID z JWT
-    C->>S: createOrganization(userId, name, type)
+    C->>S: createOrganization(userId, displayName, name, type)
+    S->>DB: utwórz brakujący profil bez nadpisywania istniejącego
     S->>DB: INSERT organizations
     S->>DB: INSERT organization_members z rolą owner
     DB-->>S: organizacja
@@ -337,6 +353,13 @@ Projekt zawiera `spring-modulith-starter-jpa`. Migracja V1 tworzy tabele:
 Automatyczna inicjalizacja schematu Modulith jest wyłączona w
 `application.yaml`, ponieważ strukturą bazy zarządza Flyway.
 
+Mapowania JPA biblioteki używają nazw `EVENT_PUBLICATION` i
+`EVENT_PUBLICATION_ARCHIVE` bez jawnego schematu. PostgreSQL zamienia
+niecytowane nazwy na małe litery, a `hibernate.default_schema=platform`
+kieruje mapowania do tabel utworzonych przez V1. Test integracyjny zapisuje
+publikację przez prawdziwy `EventPublicationRegistry`, oznacza ją jako
+zakończoną i potwierdza przeniesienie do tabeli archiwalnej.
+
 Kod nie używa jednak `ApplicationEventPublisher` ani
 `@ApplicationModuleListener`. Tabele są przygotowaną, ale obecnie nieużywaną
 infrastrukturą. Asynchroniczny audit jest zwykłym wywołaniem metody oznaczonej
@@ -408,3 +431,24 @@ GET http://localhost:8080/actuator/health
 
 Testy integracyjne wymagają działającego Dockera, ponieważ uruchamiają
 PostgreSQL przez Testcontainers.
+
+### Konfiguracja triggera profilu w Supabase
+
+Po wykonaniu migracji Flyway administrator projektu otwiera Supabase Dashboard,
+przechodzi do SQL Editor i uruchamia:
+
+```text
+docs/deployment/supabase-profile-trigger.sql
+```
+
+Następnie należy utworzyć użytkownika testowego i sprawdzić:
+
+```sql
+select user_id, display_name
+from platform.profiles
+where user_id = '<uuid użytkownika>';
+```
+
+Trigger działa w transakcji rejestracji. Błąd funkcji triggera może zablokować
+utworzenie konta, dlatego po wdrożeniu trzeba wykonać rzeczywisty test
+rejestracji. Skrypt zawiera również polecenie wycofania samego triggera.

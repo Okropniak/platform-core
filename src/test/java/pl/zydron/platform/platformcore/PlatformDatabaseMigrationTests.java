@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.modulith.events.core.EventPublicationRegistry;
+import org.springframework.modulith.events.core.PublicationTargetIdentifier;
 import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.billing.BillingService;
 import pl.zydron.platform.platformcore.entitlements.EntitlementService;
@@ -26,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@SpringBootTest(properties = "spring.modulith.events.completion-mode=archive")
 class PlatformDatabaseMigrationTests {
 
     @Autowired
@@ -49,6 +51,86 @@ class PlatformDatabaseMigrationTests {
 
     @Autowired
     UsageService usageService;
+
+    @Autowired
+    EventPublicationRegistry eventPublicationRegistry;
+
+    @Test
+    void modulithPublicationRegistryUsesFlywayManagedPlatformTables() {
+        var event = new ModulithTestEvent(UUID.randomUUID().toString());
+        var target = PublicationTargetIdentifier.of("migration-test-listener");
+
+        var publications = eventPublicationRegistry.store(event, java.util.stream.Stream.of(target));
+
+        assertThat(publications).hasSize(1);
+        Integer activeCount = jdbcTemplate.queryForObject(
+                "select count(*) from platform.event_publication where listener_id = ?",
+                Integer.class,
+                target.getValue()
+        );
+        assertThat(activeCount).isEqualTo(1);
+
+        eventPublicationRegistry.markCompleted(event, target);
+
+        Integer remainingCount = jdbcTemplate.queryForObject(
+                "select count(*) from platform.event_publication where listener_id = ?",
+                Integer.class,
+                target.getValue()
+        );
+        Integer archiveCount = jdbcTemplate.queryForObject(
+                "select count(*) from platform.event_publication_archive where listener_id = ?",
+                Integer.class,
+                target.getValue()
+        );
+        Boolean backendPrivileges = jdbcTemplate.queryForObject(
+                """
+                select has_table_privilege(
+                           'platform_backend_role',
+                           'platform.event_publication',
+                           'select,insert,update,delete'
+                       )
+                   and has_table_privilege(
+                           'platform_backend_role',
+                           'platform.event_publication_archive',
+                           'select,insert,update,delete'
+                       )
+                """,
+                Boolean.class
+        );
+        assertThat(remainingCount).isZero();
+        assertThat(archiveCount).isEqualTo(1);
+        assertThat(backendPrivileges).isTrue();
+    }
+
+    @Test
+    void planEntitlementsRequireExistingBillingPlan() {
+        Boolean constraintExists = jdbcTemplate.queryForObject(
+                """
+                select exists (
+                    select 1
+                    from pg_constraint
+                    where conname = 'plan_entitlements_plan_fk'
+                      and conrelid = 'billing.plan_entitlements'::regclass
+                )
+                """,
+                Boolean.class
+        );
+
+        assertThat(constraintExists).isTrue();
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                """
+                insert into billing.plan_entitlements (
+                    product_code,
+                    plan_code,
+                    feature_code,
+                    enabled,
+                    period
+                )
+                values ('search_saas', 'missing-plan', 'basic_search', true, 'monthly')
+                """
+        )).isInstanceOf(DataAccessException.class)
+                .hasMessageContaining("plan_entitlements_plan_fk");
+    }
 
     @Test
     void grantsAuthenticatedExecuteOnRlsHelper() {
@@ -488,7 +570,12 @@ class PlatformDatabaseMigrationTests {
         UUID userId = UUID.randomUUID();
         jdbcTemplate.update("insert into auth.users (id) values (?)", userId);
 
-        var organization = tenantService.createOrganization(userId, "Search SaaS Contract Org", "company");
+        var organization = tenantService.createOrganization(
+                userId,
+                "Search Contract Owner",
+                "Search SaaS Contract Org",
+                "company"
+        );
         UUID organizationId = organization.getId();
 
         productService.registerUserToProduct(
@@ -510,7 +597,12 @@ class PlatformDatabaseMigrationTests {
 
         UUID otherUserId = UUID.randomUUID();
         jdbcTemplate.update("insert into auth.users (id) values (?)", otherUserId);
-        tenantService.createOrganization(otherUserId, "Other Search SaaS Org", "company");
+        tenantService.createOrganization(
+                otherUserId,
+                "Other Contract Owner",
+                "Other Search SaaS Org",
+                "company"
+        );
         Integer otherUserVisibleQueries = countSearchQueriesAsAuthenticatedUser(organizationId, otherUserId);
         assertThat(otherUserVisibleQueries).isZero();
 
@@ -999,6 +1091,9 @@ class PlatformDatabaseMigrationTests {
     @FunctionalInterface
     private interface AuthenticatedOperation<T> {
         T execute(Connection connection) throws SQLException;
+    }
+
+    private record ModulithTestEvent(String value) {
     }
 
     private String awaitAuditStatus(UUID organizationId) throws InterruptedException {

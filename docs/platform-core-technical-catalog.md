@@ -2,7 +2,7 @@
 
 ## 1. Status dokumentu
 
-Dokument opisuje kod po migracji V19 i commicie końcowej weryfikacji
+Dokument opisuje kod po migracji V20 i końcowej weryfikacji
 architektury. Jest katalogiem stanu faktycznego. HLD, LLD i ADR pozostają
 dokumentami projektowymi.
 
@@ -14,9 +14,19 @@ Wszystkie endpointy poza health checkiem wymagają poprawnego JWT.
 
 | Metoda | Ścieżka | Działanie |
 |---|---|---|
-| POST | `/api/organizations` | Tworzy organizację i właściciela |
+| POST | `/api/organizations` | Tworzy organizację, brakujący profil i właściciela |
 | GET | `/api/organizations` | Zwraca organizacje użytkownika |
 | POST | `/api/organizations/{id}/members` | Dodaje członka; wymaga owner/admin |
+
+Żądanie utworzenia organizacji zawiera obowiązkowe pola `displayName`, `name`
+i `type`. `displayName` jest używane tylko wtedy, gdy profil użytkownika jeszcze
+nie istnieje.
+
+### Profil
+
+| Metoda | Ścieżka | Działanie |
+|---|---|---|
+| PUT | `/api/profile` | Tworzy profil albo aktualizuje jego `displayName` |
 
 ### Produkty
 
@@ -111,6 +121,7 @@ ma obecnie podpakietów `internal` ani jawnych interfejsów nazwanych.
 | V17 | Schemat i tabela `search_saas.search_queries` |
 | V18 | Ujednolicenie nazw `search_type` |
 | V19 | `admin_override` dla entitlementów organizacji |
+| V20 | FK z `billing.plan_entitlements` do `billing.plans` |
 
 ### Funkcje PostgreSQL
 
@@ -176,6 +187,11 @@ Istotne ustawienia:
 
 Testowy PostgreSQL dostaje minimalny schemat `auth` przez
 `test-auth-stub.sql`. Nie jest to pełny Supabase.
+
+Test rejestru publikacji Modulith używa rzeczywistego
+`EventPublicationRegistry` w trybie `archive`. Potwierdza zapis w
+`platform.event_publication` i przeniesienie zakończonej publikacji do
+`platform.event_publication_archive`.
 
 Obraz kontenera jest wskazany jako `postgres:latest`. Zapewnia świeżą wersję,
 ale zmniejsza powtarzalność pipeline'u, ponieważ wynik może zmienić się bez
@@ -262,9 +278,8 @@ Poniższe elementy nie są wdrożone, ale stanowią logiczny kolejny krok:
 
 | Specyfikacja | Aktualna implementacja | Konsekwencja |
 |---|---|---|
-| Trigger `on_auth_user_created` tworzy profil | V4 tworzy funkcję `handle_new_user`, ale nie trigger | Nowy użytkownik nie dostanie profilu automatycznie przez tę migrację |
-| Profil dostępny w przepływie użytkownika | `ProfileService` nie ma kontrolera HTTP | Profil jest funkcją wewnętrzną |
-| Moduły komunikują się tylko przez publiczne serwisy | Admin i billing korzystają również z repozytoriów oraz encji innych modułów | Granice są słabsze i trudniej wydzielić moduły |
+| Trigger `on_auth_user_created` tworzy profil | V4 tworzy funkcję, a trigger instaluje się ręcznie skryptem operacyjnym | Wdrożenie wymaga dodatkowego kroku w Supabase SQL Editor |
+| Moduły komunikują się tylko przez publiczne serwisy | Billing używa `TenantService`, ale admin nadal korzysta z repozytoriów oraz encji innych modułów | Granice modułu admin pozostają słabsze |
 | Modulith pilnuje ścisłego API modułów | Brak `internal`, `NamedInterface`, `allowedDependencies` | `verify()` wykrywa cykle, ale nie blokuje wszystkich niepożądanych zależności |
 | Zdarzenia modułowe wspierają luźne powiązania | Brak publisherów i listenerów; audit jest bezpośrednim `@Async` | Tabele event publication są obecnie nieużywane |
 | Admin audit przez Spring Data Specifications | Dynamiczny, parametryzowany SQL przez `JdbcTemplate` | Rozwiązanie działa, ale nie realizuje wskazanego mechanizmu |
@@ -272,7 +287,7 @@ Poniższe elementy nie są wdrożone, ale stanowią logiczny kolejny krok:
 | Każdy produkt ma własny schemat/backend | Schemat ma tylko `search_saas` | Grant i Architecture SaaS są wyłącznie wpisami w katalogu |
 | Platform admin obejmuje portal | Zaimplementowano tylko API | Brak interfejsu użytkownika |
 | `plan_entitlements` należy do migracji billing | Tabela powstaje w V8 entitlement schema | Kolejność migracji miesza odpowiedzialności modułów |
-| `plan_entitlements` ma FK do planu | Brak FK `(product_code, plan_code)` do `billing.plans`; są FK do features i metrics | Integralność planu jest częściowa; możliwy rekord dla nieistniejącego planu |
+| `plan_entitlements` ma FK do planu | V20 dodaje FK `(product_code, plan_code)` do `billing.plans`; istnieją również FK do features i metrics | Integralność szablonów planów jest egzekwowana przez bazę |
 | Limity zgodne z ADR/HLD | Seed free ma 100 użyć AI, pro ma 1000 | Dokument projektowy nie opisuje aktualnych limitów |
 | Numeracja migracji odpowiada sprintom LLD | Obiekty billing, entitlement i usage mają inną numerację | Nazwa pliku nie wystarcza do ustalenia odpowiedzialności |
 | Backend i RLS używają jednego kontekstu użytkownika | Backend przekazuje `p_user_id`, RLS używa `auth.uid()` | Istnieją dwa poprawne, ale różne mechanizmy identyfikacji |

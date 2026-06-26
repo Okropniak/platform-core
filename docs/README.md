@@ -22,6 +22,10 @@ Osoba poznająca projekt powinna czytać dokumenty w następującej kolejności:
    na dalsze etapy.
 4. ADR - wyjaśniają decyzje podjęte podczas implementacji.
 
+Instrukcje i skrypty wykonywane ręcznie podczas wdrożenia znajdują się w
+podkatalogu `deployment`. Skrypt `deployment/supabase-profile-trigger.sql`
+instaluje trigger tworzący profil po rejestracji użytkownika w Supabase Auth.
+
 > HLD i LLD nie są opisem stanu produkcyjnego. W przypadku rozbieżności źródłem
 > prawdy dla aktualnego zachowania są kod, migracje Flyway oraz dokumentacja
 > powdrożeniowa.

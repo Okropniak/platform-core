@@ -3,7 +3,6 @@ package pl.zydron.platform.platformcore.billing;
 import org.junit.jupiter.api.Test;
 import pl.zydron.platform.platformcore.audit.AuditService;
 import pl.zydron.platform.platformcore.common.BadRequestException;
-import pl.zydron.platform.platformcore.tenants.OrganizationRepository;
 import pl.zydron.platform.platformcore.tenants.TenantService;
 
 import java.math.BigDecimal;
@@ -16,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23,14 +23,12 @@ class BillingServiceTests {
 
     private final PlanRepository planRepository = mock(PlanRepository.class);
     private final SubscriptionRepository subscriptionRepository = mock(SubscriptionRepository.class);
-    private final OrganizationRepository organizationRepository = mock(OrganizationRepository.class);
     private final TenantService tenantService = mock(TenantService.class);
     private final EntitlementSyncService entitlementSyncService = mock(EntitlementSyncService.class);
     private final AuditService auditService = mock(AuditService.class);
     private final BillingService billingService = new BillingService(
             planRepository,
             subscriptionRepository,
-            organizationRepository,
             tenantService,
             entitlementSyncService,
             auditService
@@ -226,7 +224,6 @@ class BillingServiceTests {
         UUID adminUserId = UUID.randomUUID();
         PlanEntity plan = searchPlan("pro");
 
-        when(organizationRepository.existsById(organizationId)).thenReturn(true);
         when(planRepository.findByProductCodeAndPlanCodeAndActiveTrue("search_saas", "pro"))
                 .thenReturn(Optional.of(plan));
         when(subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, "search_saas"))
@@ -243,6 +240,7 @@ class BillingServiceTests {
 
         assertThat(subscription.getStatus()).isEqualTo("active");
         assertThat(subscription.getProvider()).isEqualTo("manual");
+        verify(tenantService).requireOrganizationExists(organizationId);
         verify(tenantService, never()).requireManager(organizationId, adminUserId);
         verify(entitlementSyncService).syncFromPlan(organizationId, "search_saas", "pro");
     }
@@ -263,7 +261,6 @@ class BillingServiceTests {
                 .updatedAt(OffsetDateTime.now())
                 .build();
 
-        when(organizationRepository.existsById(organizationId)).thenReturn(true);
         when(planRepository.findByProductCodeAndPlanCodeAndActiveTrue("search_saas", "pro"))
                 .thenReturn(Optional.of(plan));
         when(subscriptionRepository.findByOrganizationIdAndProductCode(organizationId, "search_saas"))
@@ -280,6 +277,7 @@ class BillingServiceTests {
         );
 
         assertThat(changed.getProvider()).isEqualTo("stripe");
+        verify(tenantService).requireOrganizationExists(organizationId);
         verify(tenantService, never()).requireManager(organizationId, adminUserId);
         verify(entitlementSyncService).syncFromPlan(organizationId, "search_saas", "pro");
     }
@@ -289,7 +287,9 @@ class BillingServiceTests {
         UUID organizationId = UUID.randomUUID();
         UUID adminUserId = UUID.randomUUID();
 
-        when(organizationRepository.existsById(organizationId)).thenReturn(false);
+        doThrow(new BadRequestException("Organization does not exist."))
+                .when(tenantService)
+                .requireOrganizationExists(organizationId);
 
         assertThatThrownBy(() -> billingService.changeSubscriptionAsAdmin(
                 organizationId,

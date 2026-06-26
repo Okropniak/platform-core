@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import pl.zydron.platform.platformcore.common.BadRequestException;
 import pl.zydron.platform.platformcore.common.ConflictException;
 import pl.zydron.platform.platformcore.common.PlatformAccessDeniedException;
+import pl.zydron.platform.platformcore.identity.ProfileService;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -29,6 +30,7 @@ public class TenantService {
     private final OrganizationRepository organizationRepository;
     private final OrganizationMemberRepository organizationMemberRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final ProfileService profileService;
 
     @Transactional
     /**
@@ -38,7 +40,9 @@ public class TenantService {
      * utworzenie organizacji, dzięki czemu nie powstanie organizacja bez
      * właściciela.</p>
      */
-    public OrganizationEntity createOrganization(UUID userId, String name, String type) {
+    public OrganizationEntity createOrganization(UUID userId, String displayName, String name, String type) {
+        profileService.ensureProfileExists(userId, displayName);
+
         var now = OffsetDateTime.now();
         var organization = organizationRepository.save(OrganizationEntity.builder()
                 .name(name)
@@ -115,6 +119,22 @@ public class TenantService {
                 .orElseThrow(() -> new PlatformAccessDeniedException("User is not an active organization member."));
 
         return member;
+    }
+
+    /**
+     * Sprawdza istnienie organizacji bez wymagania członkostwa użytkownika.
+     *
+     * <p>Metoda jest publicznym kontraktem modułu tenants dla operacji
+     * administracyjnych wykonywanych przez inne moduły. Dzięki temu billing
+     * nie musi korzystać bezpośrednio z repozytorium organizacji.</p>
+     *
+     * @throws BadRequestException gdy organizacja nie istnieje
+     */
+    @Transactional(readOnly = true)
+    public void requireOrganizationExists(UUID organizationId) {
+        if (!organizationRepository.existsById(organizationId)) {
+            throw new BadRequestException("Organization does not exist.");
+        }
     }
 
     private void requireExistingUser(UUID userId) {

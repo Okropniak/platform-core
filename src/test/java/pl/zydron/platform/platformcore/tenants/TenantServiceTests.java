@@ -4,12 +4,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import pl.zydron.platform.platformcore.common.BadRequestException;
 import pl.zydron.platform.platformcore.common.ConflictException;
+import pl.zydron.platform.platformcore.identity.ProfileService;
 
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -22,11 +25,41 @@ class TenantServiceTests {
     private final OrganizationRepository organizationRepository = mock(OrganizationRepository.class);
     private final OrganizationMemberRepository organizationMemberRepository = mock(OrganizationMemberRepository.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+    private final ProfileService profileService = mock(ProfileService.class);
     private final TenantService tenantService = new TenantService(
             organizationRepository,
             organizationMemberRepository,
-            jdbcTemplate
+            jdbcTemplate,
+            profileService
     );
+
+    @Test
+    void createOrganizationEnsuresProfileBeforeSavingTenant() {
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = UUID.randomUUID();
+        OrganizationEntity organization = OrganizationEntity.builder()
+                .id(organizationId)
+                .name("Acme")
+                .type("company")
+                .createdBy(userId)
+                .createdAt(OffsetDateTime.now())
+                .updatedAt(OffsetDateTime.now())
+                .build();
+        when(organizationRepository.save(any(OrganizationEntity.class))).thenReturn(organization);
+        when(organizationMemberRepository.save(any(OrganizationMemberEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrganizationEntity result = tenantService.createOrganization(
+                userId,
+                "Jan Kowalski",
+                "Acme",
+                "company"
+        );
+
+        assertThat(result).isSameAs(organization);
+        verify(profileService).ensureProfileExists(userId, "Jan Kowalski");
+        verify(organizationMemberRepository).save(any(OrganizationMemberEntity.class));
+    }
 
     @Test
     void addMemberRejectsExistingMembershipInsteadOfOverwritingRole() {
@@ -64,6 +97,26 @@ class TenantServiceTests {
                 .hasMessageContaining("Target user does not exist");
 
         verify(organizationMemberRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void requireOrganizationExistsAcceptsKnownOrganization() {
+        UUID organizationId = UUID.randomUUID();
+        when(organizationRepository.existsById(organizationId)).thenReturn(true);
+
+        tenantService.requireOrganizationExists(organizationId);
+
+        verify(organizationRepository).existsById(organizationId);
+    }
+
+    @Test
+    void requireOrganizationExistsRejectsUnknownOrganization() {
+        UUID organizationId = UUID.randomUUID();
+        when(organizationRepository.existsById(organizationId)).thenReturn(false);
+
+        assertThatThrownBy(() -> tenantService.requireOrganizationExists(organizationId))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Organization does not exist");
     }
 
     private OrganizationMemberEntity member(UUID organizationId, UUID userId, String role) {

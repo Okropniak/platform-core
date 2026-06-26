@@ -45,7 +45,12 @@ public class TenantController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateOrganizationRequest request
     ) {
-        return OrganizationResponse.from(tenantService.createOrganization(JwtUser.userId(jwt), request.name(), request.type()));
+        return OrganizationResponse.from(tenantService.createOrganization(
+                JwtUser.userId(jwt),
+                request.displayName(),
+                request.name(),
+                request.type()
+        ));
     }
 
     @GetMapping
@@ -73,6 +78,7 @@ public class TenantController {
     }
 
     public record CreateOrganizationRequest(
+            @NotBlank @Size(max = 200) String displayName,
             @NotBlank @Size(max = 200) String name,
             @NotBlank @Pattern(regexp = "individual|company") String type
     ) {
