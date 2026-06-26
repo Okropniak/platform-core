@@ -58,6 +58,8 @@ class ProfileControllerTests {
                     .isNotEmpty();
             assertThat(validator.validate(new ProfileController.UpsertProfileRequest("a".repeat(201))))
                     .isNotEmpty();
+            assertThat(validator.validate(new ProfileController.UpsertProfileRequest("a".repeat(200))))
+                    .isEmpty();
             assertThat(validator.validate(new ProfileController.UpsertProfileRequest("Jan Kowalski")))
                     .isEmpty();
         }

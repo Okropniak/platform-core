@@ -113,6 +113,22 @@ Trzecia ścieżka używa `ensureProfileExists()`. Tworzy brakujący rekord, ale 
 zmienia istniejącego profilu. Dzięki temu nazwa ustawiona wcześniej przez
 użytkownika nie zostanie przypadkowo nadpisana.
 
+W aktualnej implementacji tworzenie profilu nie używa zwykłego
+`profileRepository.save()`. Powodem jest zachowanie Hibernate: zapis encji może
+zostać odłożony do `flush` przy końcu transakcji, więc konflikt unikalnego
+`user_id` pojawiłby się już poza lokalnym blokiem obsługi błędu. Dlatego
+`ProfileService` używa atomowego SQL przez `JdbcTemplate`:
+
+- `upsertProfile()` wykonuje `INSERT ... ON CONFLICT (user_id) DO UPDATE` i
+  aktualizuje `display_name`;
+- `ensureProfileExists()` wykonuje `INSERT ... ON CONFLICT (user_id) DO NOTHING`
+  i w razie konfliktu odczytuje istniejący profil.
+
+Te dwie metody celowo nie współdzielą jednej metody tworzącej. Ich kontrakty są
+różne: endpoint profilu ma prawo zmienić nazwę, a zabezpieczenie przy tworzeniu
+organizacji ma tylko zapewnić istnienie rekordu bez nadpisywania danych
+ustawionych wcześniej przez użytkownika.
+
 Migracja V4 przygotowuje funkcję `platform.handle_new_user()`, ale nie może
 utworzyć triggera na zarządzanej tabeli `auth.users`. Trigger instaluje się
 ręcznie skryptem `docs/deployment/supabase-profile-trigger.sql`.

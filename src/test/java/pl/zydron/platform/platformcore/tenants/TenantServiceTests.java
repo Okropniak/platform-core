@@ -15,6 +15,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -57,8 +59,28 @@ class TenantServiceTests {
         );
 
         assertThat(result).isSameAs(organization);
-        verify(profileService).ensureProfileExists(userId, "Jan Kowalski");
+        var inOrder = inOrder(profileService, organizationRepository);
+        inOrder.verify(profileService).ensureProfileExists(userId, "Jan Kowalski");
+        inOrder.verify(organizationRepository).save(any(OrganizationEntity.class));
         verify(organizationMemberRepository).save(any(OrganizationMemberEntity.class));
+    }
+
+    @Test
+    void createOrganizationDoesNotSaveTenantWhenProfileBootstrapFails() {
+        UUID userId = UUID.randomUUID();
+        doThrow(new IllegalStateException("profile unavailable"))
+                .when(profileService).ensureProfileExists(userId, "Jan Kowalski");
+
+        assertThatThrownBy(() -> tenantService.createOrganization(
+                userId,
+                "Jan Kowalski",
+                "Acme",
+                "company"
+        )).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("profile unavailable");
+
+        verify(organizationRepository, never()).save(any(OrganizationEntity.class));
+        verify(organizationMemberRepository, never()).save(any(OrganizationMemberEntity.class));
     }
 
     @Test

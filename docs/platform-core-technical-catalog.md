@@ -28,6 +28,15 @@ nie istnieje.
 |---|---|---|
 | PUT | `/api/profile` | Tworzy profil albo aktualizuje jego `displayName` |
 
+`PUT /api/profile` używa `ProfileService.upsertProfile()`, które wykonuje
+atomowe `INSERT ... ON CONFLICT DO UPDATE`. Dzięki temu równoległe żądania z
+dwóch kart przeglądarki nie kończą się błędem unikalnego `user_id`.
+
+Fallback używany przy `POST /api/organizations` działa inaczej:
+`ProfileService.ensureProfileExists()` wykonuje `INSERT ... ON CONFLICT DO
+NOTHING`. Jeżeli profil już istnieje, metoda go odczytuje i nie nadpisuje
+wcześniej ustawionego `displayName`.
+
 ### Produkty
 
 | Metoda | Ścieżka | Działanie |
@@ -192,6 +201,16 @@ Test rejestru publikacji Modulith używa rzeczywistego
 `EventPublicationRegistry` w trybie `archive`. Potwierdza zapis w
 `platform.event_publication` i przeniesienie zakończonej publikacji do
 `platform.event_publication_archive`.
+
+Testy profilu sprawdzają rozdzielone kontrakty:
+
+- `upsertProfile()` używa `ON CONFLICT DO UPDATE`;
+- `ensureProfileExists()` używa `ON CONFLICT DO NOTHING` i nie woła JPA
+  `save()`;
+- tworzenie organizacji najpierw zapewnia profil, a dopiero potem zapisuje
+  organizację;
+- awaria bootstrapu profilu blokuje zapis organizacji;
+- limit `displayName` akceptuje dokładnie 200 znaków i odrzuca 201.
 
 Obraz kontenera jest wskazany jako `postgres:latest`. Zapewnia świeżą wersję,
 ale zmniejsza powtarzalność pipeline'u, ponieważ wynik może zmienić się bez
