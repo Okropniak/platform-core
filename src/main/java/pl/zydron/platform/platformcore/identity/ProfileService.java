@@ -1,6 +1,7 @@
 package pl.zydron.platform.platformcore.identity;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.ArgumentPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
@@ -11,10 +12,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Udostepnia operacje na profilu uzytkownika niezalezne od danych logowania.
+ * Udostępnia operacje na profilu użytkownika niezależne od danych logowania.
  *
- * <p>Konto i haslo sa zarzadzane przez Supabase Auth. Ten serwis odpowiada
- * wylacznie za dane aplikacyjne zapisane w tabeli {@code platform.profiles}.</p>
+ * <p>Konto i hasło są zarządzane przez Supabase Auth. Ten serwis odpowiada
+ * wyłącznie za dane aplikacyjne zapisane w tabeli {@code platform.profiles}.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -32,10 +33,10 @@ public class ProfileService {
     private final JdbcTemplate jdbcTemplate;
 
     /**
-     * Wyszukuje profil powiazany z uzytkownikiem Supabase.
+     * Wyszukuje profil powiązany z użytkownikiem Supabase.
      *
      * @param userId UUID z pola {@code sub} tokenu
-     * @return profil lub pusty wynik, jezeli profil nie zostal jeszcze utworzony
+     * @return profil lub pusty wynik, jeżeli profil nie został jeszcze utworzony
      */
     @Transactional(readOnly = true)
     public Optional<ProfileEntity> findByUserId(UUID userId) {
@@ -43,17 +44,17 @@ public class ProfileService {
     }
 
     /**
-     * Tworzy profil albo aktualizuje jego nazwe, gdy profil juz istnieje.
+     * Tworzy profil albo aktualizuje jego nazwę, gdy profil już istnieje.
      *
-     * <p>Metoda uzywa jednego atomowego polecenia PostgreSQL
-     * {@code INSERT ... ON CONFLICT DO UPDATE}. Dzieki temu dwie rownolegle
-     * prosby tego samego uzytkownika nie trafiaja w opozniony flush Hibernate
-     * i nie koncza sie bledem 500 przy naruszeniu unikalnego {@code user_id}.</p>
+     * <p>Metoda używa jednego atomowego polecenia PostgreSQL
+     * {@code INSERT ... ON CONFLICT DO UPDATE}. Dzięki temu dwie równoległe
+     * prośby tego samego użytkownika nie trafiają w opóźniony flush Hibernate
+     * i nie kończą się błędem 500 przy naruszeniu unikalnego {@code user_id}.</p>
      */
     @Transactional
     public ProfileEntity upsertProfile(UUID userId, String displayName) {
         OffsetDateTime now = OffsetDateTime.now();
-        return jdbcTemplate.query("""
+        return queryProfile("""
                         insert into platform.profiles(user_id, display_name, created_at, updated_at)
                         values (?, ?, ?, ?)
                         on conflict (user_id) do update
@@ -61,42 +62,57 @@ public class ProfileService {
                                 updated_at = excluded.updated_at
                         returning id, user_id, display_name, created_at, updated_at
                         """,
-                PROFILE_ROW_MAPPER,
                 userId,
                 displayName,
                 now,
                 now
-        ).getFirst();
+        ).orElseThrow(() -> new IllegalStateException("upsertProfile returned no row for userId: " + userId));
     }
 
     /**
-     * Zapewnia, ze uzytkownik ma profil, ale nie zmienia istniejacych danych.
+     * Zapewnia, że użytkownik ma profil, ale nie zmienia istniejących danych.
      *
-     * <p>Metoda jest uzywana jako zabezpieczenie przy tworzeniu pierwszej
-     * organizacji. Jezeli frontend wczesniej wywolal {@code PUT /api/profile},
-     * zapisana tam nazwa pozostaje bez zmian. Podana nazwa jest uzywana tylko
-     * podczas tworzenia brakujacego rekordu.</p>
+     * <p>Metoda jest używana jako zabezpieczenie przy tworzeniu pierwszej
+     * organizacji. Jeżeli frontend wcześniej wywołał {@code PUT /api/profile},
+     * zapisana tam nazwa pozostaje bez zmian. Podana nazwa jest używana tylko
+     * podczas tworzenia brakującego rekordu.</p>
      *
-     * @param userId UUID uzytkownika z Supabase Auth
-     * @param displayName nazwa uzywana wylacznie dla nowego profilu
-     * @return istniejacy albo wlasnie utworzony profil
+     * @param userId UUID użytkownika z Supabase Auth
+     * @param displayName nazwa używana wyłącznie dla nowego profilu
+     * @return istniejący albo właśnie utworzony profil
      */
     @Transactional
     public ProfileEntity ensureProfileExists(UUID userId, String displayName) {
         OffsetDateTime now = OffsetDateTime.now();
-        return jdbcTemplate.query("""
+        return queryProfile("""
                         insert into platform.profiles(user_id, display_name, created_at, updated_at)
                         values (?, ?, ?, ?)
                         on conflict (user_id) do nothing
                         returning id, user_id, display_name, created_at, updated_at
                         """,
-                PROFILE_ROW_MAPPER,
                 userId,
                 displayName,
                 now,
                 now
-        ).stream().findFirst()
-                .or(() -> profileRepository.findByUserId(userId))
-                .orElseThrow();
+        ).or(() -> findByUserIdJdbc(userId))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Profile not found after ensureProfileExists for userId: " + userId
+                ));
+    }
+
+    private Optional<ProfileEntity> findByUserIdJdbc(UUID userId) {
+        return queryProfile("""
+                        select id, user_id, display_name, created_at, updated_at
+                        from platform.profiles
+                        where user_id = ?
+                        """,
+                userId
+        );
+    }
+
+    private Optional<ProfileEntity> queryProfile(String sql, Object... args) {
+        return jdbcTemplate.query(sql, new ArgumentPreparedStatementSetter(args), PROFILE_ROW_MAPPER)
+                .stream()
+                .findFirst();
     }
 }
