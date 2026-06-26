@@ -5,8 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pl.zydron.platform.platformcore.audit.AuditService;
-import pl.zydron.platform.platformcore.common.BadRequestException;
-import pl.zydron.platform.platformcore.tenants.OrganizationRepository;
+import pl.zydron.platform.platformcore.tenants.TenantAccessPort;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -23,7 +22,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminEntitlementService {
 
-    private final OrganizationRepository organizationRepository;
+    private final TenantAccessPort tenantAccessPort;
     private final JdbcTemplate jdbcTemplate;
     private final AuditService auditService;
 
@@ -42,9 +41,7 @@ public class AdminEntitlementService {
             String period,
             String source
     ) {
-        if (!organizationRepository.existsById(organizationId)) {
-            throw new BadRequestException("Organization does not exist.");
-        }
+        tenantAccessPort.requireOrganizationExists(organizationId);
         String effectiveSource = source == null || source.isBlank() ? "admin_override" : source;
         // Jedna instrukcja SQL eliminuje wyścig między sprawdzeniem istnienia
         // rekordu a jego utworzeniem.
